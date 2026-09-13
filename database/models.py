@@ -16,6 +16,10 @@ Tables:
                          (kept DELIBERATELY SEPARATE from `packages` - see
                          scraper/lpse_homepage_scraper.py docstring for why)
     homepage_scrape_runs - a log entry for every homepage-summary check run
+    excel_config       - current Excel export settings (single row)
+    excel_generated_rows - which (file, sheet, row) triples this app wrote,
+                         so exports never touch rows/data the user entered
+                         by hand - see services/excel_service.py
 """
 
 SCHEMA_SQL = """
@@ -154,4 +158,33 @@ CREATE TABLE IF NOT EXISTS homepage_scrape_runs (
     status                      TEXT NOT NULL DEFAULT 'running',
     error_message               TEXT
 );
+
+-- Single-row table (id is always 1) holding the current Excel export
+-- settings, set from the "Excel" tab. Kept in the database (not a config
+-- file) so it survives app restarts and is easy to change from the UI.
+CREATE TABLE IF NOT EXISTS excel_config (
+    id                  INTEGER PRIMARY KEY CHECK (id = 1),
+    file_path           TEXT,
+    sheet_name          TEXT NOT NULL DEFAULT 'Data LPSE',
+    start_cell          TEXT NOT NULL DEFAULT 'A5',
+    enabled_columns     TEXT,      -- JSON list of column field-keys, in order
+    mode                TEXT NOT NULL DEFAULT 'replace',  -- 'replace' | 'append_new'
+    updated_at          TEXT NOT NULL
+);
+
+-- Tracks exactly which (file, sheet, row) triples were written by THIS
+-- app, so a "replace" export only ever clears rows we ourselves wrote
+-- (never a row the user entered by hand), and an "append new only" export
+-- knows which packages already have a row so it doesn't duplicate them.
+CREATE TABLE IF NOT EXISTS excel_generated_rows (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path       TEXT NOT NULL,
+    sheet_name      TEXT NOT NULL,
+    package_key     TEXT NOT NULL,  -- package_id or fingerprint, from `packages`
+    row_number      INTEGER NOT NULL,
+    written_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_excel_rows_file_sheet
+    ON excel_generated_rows(file_path, sheet_name);
 """

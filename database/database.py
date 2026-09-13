@@ -151,6 +151,47 @@ def get_all_keywords(conn: sqlite3.Connection) -> list:
     return conn.execute("SELECT * FROM keywords ORDER BY keyword").fetchall()
 
 
+def add_keyword(conn: sqlite3.Connection, keyword: str) -> tuple:
+    """Returns (ok, message) - meant to be called straight from a form
+    submit, same pattern as add_region."""
+    keyword = keyword.strip()
+    if not keyword:
+        return False, "Kata kunci tidak boleh kosong."
+    existing = conn.execute(
+        "SELECT id FROM keywords WHERE keyword = ?", (keyword,)
+    ).fetchone()
+    if existing:
+        return False, f"Kata kunci '{keyword}' sudah ada."
+    now = _now()
+    conn.execute(
+        "INSERT INTO keywords (keyword, is_enabled, created_at, updated_at) VALUES (?, 1, ?, ?)",
+        (keyword, now, now),
+    )
+    return True, f"Kata kunci '{keyword}' berhasil ditambahkan."
+
+
+def update_keyword_text(conn: sqlite3.Connection, keyword_id: int, new_text: str) -> tuple:
+    new_text = new_text.strip()
+    if not new_text:
+        return False, "Kata kunci tidak boleh kosong."
+    conn.execute(
+        "UPDATE keywords SET keyword=?, updated_at=? WHERE id=?",
+        (new_text, _now(), keyword_id),
+    )
+    return True, "Kata kunci berhasil diperbarui."
+
+
+def set_keyword_enabled(conn: sqlite3.Connection, keyword_id: int, is_enabled: bool) -> None:
+    conn.execute(
+        "UPDATE keywords SET is_enabled=?, updated_at=? WHERE id=?",
+        (int(is_enabled), _now(), keyword_id),
+    )
+
+
+def delete_keyword(conn: sqlite3.Connection, keyword_id: int) -> None:
+    conn.execute("DELETE FROM keywords WHERE id=?", (keyword_id,))
+
+
 # ---------------------------------------------------------------------------
 # Packages
 # ---------------------------------------------------------------------------
@@ -445,3 +486,65 @@ def get_last_completed_homepage_run(conn: sqlite3.Connection):
     return conn.execute(
         "SELECT * FROM homepage_scrape_runs WHERE status = 'completed' ORDER BY started_at DESC LIMIT 1"
     ).fetchone()
+
+
+# ---------------------------------------------------------------------------
+# Excel export config + row tracking - see services/excel_service.py
+# ---------------------------------------------------------------------------
+
+def get_excel_config(conn: sqlite3.Connection):
+    return conn.execute("SELECT * FROM excel_config WHERE id = 1").fetchone()
+
+
+def save_excel_config(
+    conn: sqlite3.Connection,
+    file_path: str,
+    sheet_name: str,
+    start_cell: str,
+    enabled_columns: list,
+    mode: str,
+) -> None:
+    now = _now()
+    conn.execute(
+        """
+        INSERT INTO excel_config (id, file_path, sheet_name, start_cell, enabled_columns, mode, updated_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            file_path=excluded.file_path, sheet_name=excluded.sheet_name,
+            start_cell=excluded.start_cell, enabled_columns=excluded.enabled_columns,
+            mode=excluded.mode, updated_at=excluded.updated_at
+        """,
+        (file_path, sheet_name, start_cell, json.dumps(enabled_columns), mode, now),
+    )
+
+
+def get_tracked_excel_rows(conn: sqlite3.Connection, file_path: str, sheet_name: str) -> list:
+    return conn.execute(
+        "SELECT * FROM excel_generated_rows WHERE file_path=? AND sheet_name=? ORDER BY row_number ASC",
+        (file_path, sheet_name),
+    ).fetchall()
+
+
+def get_tracked_excel_package_keys(conn: sqlite3.Connection, file_path: str, sheet_name: str) -> set:
+    rows = conn.execute(
+        "SELECT package_key FROM excel_generated_rows WHERE file_path=? AND sheet_name=?",
+        (file_path, sheet_name),
+    ).fetchall()
+    return {r["package_key"] for r in rows}
+
+
+def clear_tracked_excel_rows(conn: sqlite3.Connection, file_path: str, sheet_name: str) -> None:
+    conn.execute(
+        "DELETE FROM excel_generated_rows WHERE file_path=? AND sheet_name=?",
+        (file_path, sheet_name),
+    )
+
+
+def add_tracked_excel_row(
+    conn: sqlite3.Connection, file_path: str, sheet_name: str, package_key: str, row_number: int
+) -> None:
+    conn.execute(
+        "INSERT INTO excel_generated_rows (file_path, sheet_name, package_key, row_number, written_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (file_path, sheet_name, package_key, row_number, _now()),
+    )

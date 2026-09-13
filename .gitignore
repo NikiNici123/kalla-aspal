@@ -25,3 +25,8 @@ Thumbs.db
 
 # Output
 *.log
+
+# PyInstaller build artifacts (see build_exe.bat) - regenerate, don't commit
+build/
+dist/
+*.spec.bak
