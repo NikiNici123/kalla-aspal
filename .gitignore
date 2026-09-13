@@ -1,0 +1,22 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Env / secrets
+.env
+.env.*
+
+# OS / editor
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Output
+output/
+*.log
