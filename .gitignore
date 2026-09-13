@@ -1,4 +1,4 @@
-# Node
+# Node (kept in case this project ever grows a JS piece)
 node_modules/
 npm-debug.log*
 
@@ -7,6 +7,12 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+
+# App data - the whole point is that this stays local and per-machine
+data/*.db
+data/*.db-journal
+backups/
+logs/*.log
 
 # Env / secrets
 .env
@@ -18,5 +24,4 @@ venv/
 Thumbs.db
 
 # Output
-output/
 *.log
