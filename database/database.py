@@ -93,11 +93,50 @@ def upsert_region(conn: sqlite3.Connection, region_name: str, region_identifier:
 
 
 def get_active_regions(conn: sqlite3.Connection) -> list:
-    return conn.execute("SELECT * FROM regions WHERE is_active = 1").fetchall()
+    return conn.execute("SELECT * FROM regions WHERE is_active = 1 ORDER BY region_name").fetchall()
 
 
 def get_all_regions(conn: sqlite3.Connection) -> list:
     return conn.execute("SELECT * FROM regions ORDER BY region_name").fetchall()
+
+
+def get_region_by_identifier(conn: sqlite3.Connection, region_identifier: str):
+    return conn.execute(
+        "SELECT * FROM regions WHERE region_identifier = ?", (region_identifier,)
+    ).fetchone()
+
+
+def add_region(conn: sqlite3.Connection, region_name: str, region_identifier: str, base_url: str) -> tuple:
+    """Explicitly add a region from the Wilayah LPSE management UI.
+    Returns (ok: bool, message: str) instead of raising, since this is
+    meant to be called directly from a form submit and shown to a
+    non-technical user."""
+    region_identifier = region_identifier.strip()
+    if not region_identifier:
+        return False, "Region Identifier tidak boleh kosong."
+    if get_region_by_identifier(conn, region_identifier):
+        return False, f"Wilayah dengan identifier '{region_identifier}' sudah ada."
+    now = _now()
+    conn.execute(
+        "INSERT INTO regions (region_name, region_identifier, base_url, is_active, created_at, updated_at) "
+        "VALUES (?, ?, ?, 1, ?, ?)",
+        (region_name.strip() or region_identifier, region_identifier, base_url, now, now),
+    )
+    return True, f"Wilayah '{region_name or region_identifier}' berhasil ditambahkan."
+
+
+def set_region_active(conn: sqlite3.Connection, region_id: int, is_active: bool) -> None:
+    conn.execute(
+        "UPDATE regions SET is_active=?, updated_at=? WHERE id=?",
+        (int(is_active), _now(), region_id),
+    )
+
+
+def delete_region(conn: sqlite3.Connection, region_id: int) -> None:
+    """Removes the region from the monitored list. Packages already stored
+    for it are kept (they're tied to region_identifier, not to this row) -
+    deleting a region only stops future scrapes of it."""
+    conn.execute("DELETE FROM regions WHERE id=?", (region_id,))
 
 
 # ---------------------------------------------------------------------------
@@ -184,15 +223,28 @@ def touch_package_last_seen(conn: sqlite3.Connection, existing_row: sqlite3.Row)
     )
 
 
+# Ordering note: the user wants the STORED/DISPLAYED list to run earliest
+# package first, latest package last - i.e. the opposite of "most recently
+# touched by us first". The site doesn't expose an explicit upload
+# timestamp, but Package ID (Kode Lelang) is assigned in increasing order
+# as packages are created, so we use it as a chronology proxy: ascending
+# package_id = earliest-to-latest. Rows without a numeric package_id (the
+# fallback-fingerprint case) are pushed to the end, ordered by when we
+# first saw them.
+_CHRONOLOGICAL_ORDER_SQL = (
+    "ORDER BY (package_id IS NULL) ASC, CAST(package_id AS INTEGER) ASC, first_seen_at ASC"
+)
+
+
 def get_relevant_packages(conn: sqlite3.Connection, region_identifier: Optional[str] = None) -> list:
     if region_identifier:
         return conn.execute(
-            "SELECT * FROM packages WHERE is_relevant = 1 AND region_identifier = ? "
-            "ORDER BY last_updated_at DESC",
+            f"SELECT * FROM packages WHERE is_relevant = 1 AND region_identifier = ? "
+            f"{_CHRONOLOGICAL_ORDER_SQL}",
             (region_identifier,),
         ).fetchall()
     return conn.execute(
-        "SELECT * FROM packages WHERE is_relevant = 1 ORDER BY last_updated_at DESC"
+        f"SELECT * FROM packages WHERE is_relevant = 1 {_CHRONOLOGICAL_ORDER_SQL}"
     ).fetchall()
 
 
@@ -276,4 +328,120 @@ def get_scrape_history(conn: sqlite3.Connection, limit: int = 50) -> list:
 def get_last_completed_run(conn: sqlite3.Connection):
     return conn.execute(
         "SELECT * FROM scrape_runs WHERE status = 'completed' ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+
+
+# ---------------------------------------------------------------------------
+# Homepage ("Beranda") summary packages - see scraper/lpse_homepage_scraper.py
+# and models.py for why this is a separate table from `packages`.
+# ---------------------------------------------------------------------------
+
+def get_homepage_package_by_key(conn: sqlite3.Connection, package_id: Optional[str], fingerprint: Optional[str]):
+    if package_id:
+        return conn.execute(
+            "SELECT * FROM homepage_packages WHERE package_id = ?", (package_id,)
+        ).fetchone()
+    if fingerprint:
+        return conn.execute(
+            "SELECT * FROM homepage_packages WHERE fingerprint = ?", (fingerprint,)
+        ).fetchone()
+    return None
+
+
+def insert_homepage_package(conn: sqlite3.Connection, pkg_dict: dict) -> None:
+    now = _now()
+    conn.execute(
+        """
+        INSERT INTO homepage_packages (
+            package_id, fingerprint, region_identifier, section, kategori, nama_paket,
+            badges, hps_text, hps_value, akhir_pendaftaran_text, akhir_pendaftaran_at,
+            display_position, package_url, is_relevant, matched_keywords,
+            first_seen_at, last_seen_at, last_updated_at
+        ) VALUES (?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?)
+        """,
+        (
+            pkg_dict["package_id"], pkg_dict["fingerprint"], pkg_dict["region_identifier"],
+            pkg_dict["section"], pkg_dict["kategori"], pkg_dict["nama_paket"],
+            json.dumps(pkg_dict.get("badges", [])), pkg_dict["hps_text"], pkg_dict["hps_value"],
+            pkg_dict["akhir_pendaftaran_text"], pkg_dict["akhir_pendaftaran_at"],
+            pkg_dict["display_position"], pkg_dict["package_url"],
+            int(pkg_dict.get("is_relevant", False)), json.dumps(pkg_dict.get("matched_keywords", [])),
+            now, now, now,
+        ),
+    )
+
+
+def update_homepage_package(conn: sqlite3.Connection, existing_row: sqlite3.Row, pkg_dict: dict) -> None:
+    now = _now()
+    conn.execute(
+        """
+        UPDATE homepage_packages SET
+            section=?, kategori=?, nama_paket=?, badges=?, hps_text=?, hps_value=?,
+            akhir_pendaftaran_text=?, akhir_pendaftaran_at=?, display_position=?,
+            package_url=?, is_relevant=?, matched_keywords=?, last_seen_at=?, last_updated_at=?
+        WHERE id=?
+        """,
+        (
+            pkg_dict["section"], pkg_dict["kategori"], pkg_dict["nama_paket"],
+            json.dumps(pkg_dict.get("badges", [])), pkg_dict["hps_text"], pkg_dict["hps_value"],
+            pkg_dict["akhir_pendaftaran_text"], pkg_dict["akhir_pendaftaran_at"], pkg_dict["display_position"],
+            pkg_dict["package_url"], int(pkg_dict.get("is_relevant", False)),
+            json.dumps(pkg_dict.get("matched_keywords", [])), now, now, existing_row["id"],
+        ),
+    )
+
+
+def touch_homepage_package_last_seen(conn: sqlite3.Connection, existing_row: sqlite3.Row) -> None:
+    conn.execute(
+        "UPDATE homepage_packages SET last_seen_at=? WHERE id=?", (_now(), existing_row["id"])
+    )
+
+
+def get_relevant_homepage_packages(conn: sqlite3.Connection, region_identifier: Optional[str] = None) -> list:
+    if region_identifier:
+        return conn.execute(
+            f"SELECT * FROM homepage_packages WHERE is_relevant = 1 AND region_identifier = ? "
+            f"{_CHRONOLOGICAL_ORDER_SQL}",
+            (region_identifier,),
+        ).fetchall()
+    return conn.execute(
+        f"SELECT * FROM homepage_packages WHERE is_relevant = 1 {_CHRONOLOGICAL_ORDER_SQL}"
+    ).fetchall()
+
+
+def start_homepage_scrape_run(conn: sqlite3.Connection, regions_scraped: list) -> int:
+    cur = conn.execute(
+        "INSERT INTO homepage_scrape_runs (started_at, regions_scraped, status) VALUES (?, ?, 'running')",
+        (_now(), json.dumps(regions_scraped)),
+    )
+    return cur.lastrowid
+
+
+def finish_homepage_scrape_run(
+    conn: sqlite3.Connection,
+    run_id: int,
+    total_packages_found: int,
+    relevant_packages_found: int,
+    new_packages_found: int,
+    updated_packages_found: int,
+    status: str = "completed",
+    error_message: Optional[str] = None,
+) -> None:
+    conn.execute(
+        """
+        UPDATE homepage_scrape_runs SET
+            finished_at=?, total_packages_found=?, relevant_packages_found=?,
+            new_packages_found=?, updated_packages_found=?, status=?, error_message=?
+        WHERE id=?
+        """,
+        (
+            _now(), total_packages_found, relevant_packages_found,
+            new_packages_found, updated_packages_found, status, error_message, run_id,
+        ),
+    )
+
+
+def get_last_completed_homepage_run(conn: sqlite3.Connection):
+    return conn.execute(
+        "SELECT * FROM homepage_scrape_runs WHERE status = 'completed' ORDER BY started_at DESC LIMIT 1"
     ).fetchone()

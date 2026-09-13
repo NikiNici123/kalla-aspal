@@ -1,18 +1,17 @@
 # Kalla Aspal - LPSE Monitor
 
 A local-first tool for admin staff to keep an eye on LPSE/SPSE government
-procurement tenders (`https://spse.inaproc.id/{region}/lelang`) and get
-told when a new road-construction package shows up.
+procurement tenders and get told when a new road-construction package
+shows up.
 
 Runs entirely on your own Windows PC. No cloud database, no login, no
-internet-facing deployment - everything (settings, keyword list, every
-tender ever seen) lives in one local SQLite file under `data/`.
+internet-facing deployment - everything (settings, keyword list, region
+list, every package ever seen) lives in one local SQLite file under
+`data/`.
 
-**Current status: Phase 1 + Phase 2 of the development plan** (see
-"Development phases" below) - the scraper, keyword filtering, local
-database, and new/updated/existing detection all work end-to-end through
-a minimal Streamlit screen. Region management, keyword management, Excel
-export, scheduling and the fuller multi-page UI come in later phases.
+**For the full project status - what's done, what's not, dated changelog,
+architecture diagram - see [`PROJECT_STATUS.md`](PROJECT_STATUS.md).**
+This file is the quick-start guide; that one is the detailed log.
 
 ## Installation (Windows)
 
@@ -38,77 +37,93 @@ default road-related keyword list already seeded in).
 
 ## How to use it
 
-1. Enter one or more LPSE region identifiers (the part of the URL right
-   after `spse.inaproc.id/`, e.g. `singkawangkota`). Separate multiple
-   regions with commas.
-2. Click **CEK TENDER**.
-3. The app fetches the current tender list for each region, keeps only
-   packages whose name matches one of your road-related keywords, and
-   compares them against everything it has seen before. You'll see:
-   - **X PAKET BARU DITEMUKAN** (X new packages found) - packages never
-     seen before.
-   - Packages whose status/HPS/contract value changed since last time.
-   - A running table of every relevant package known so far.
-4. Run it again in the morning and at night, per your normal workflow -
+1. Go to the **Wilayah LPSE** tab and add every LPSE region you want to
+   monitor (name + region identifier, e.g. `singkawangkota` or
+   `kalbarprov`). This only needs doing once per region - it's remembered.
+2. Go to **Cek Tender (Daftar Lengkap)** and click **CEK TENDER** - this
+   checks the full tender list (every status) for all active regions.
+3. Go to **Ringkasan Beranda** and click **CEK RINGKASAN BERANDA** - this
+   checks each region's homepage summary, which additionally carries a
+   registration deadline ("Akhir Pendaftaran").
+4. Either check will tell you **X PAKET BARU DITEMUKAN** (or "tidak ada
+   paket baru") and list what's new/changed. Both keep a running,
+   earliest-first table of everything relevant found so far.
+5. Run it again in the morning and at night, per your normal workflow -
    the database remembers everything between runs.
+
+## Why two separate checks?
+
+They answer different questions and come from different pages on the
+site - see `scraper/lpse_homepage_scraper.py`'s module docstring for the
+full technical reasoning:
+
+| | Daftar Lengkap (`/lelang`) | Ringkasan Beranda (`/`) |
+|---|---|---|
+| Covers | every package this year, any status | only what the homepage currently features |
+| Registration deadline | not available | yes ("Akhir Pendaftaran") |
+| Needs login/session | yes (handled automatically) | no - plain public page |
+
+## Pushing changes to GitHub
+
+Double-click **`push_to_github.bat`** in this folder. It stages, commits
+(asking for an optional short message), and pushes everything in one go -
+no need to type git commands.
 
 ## What data is being retrieved
 
-The site loads its tender table via an internal JSON API
-(`POST /{region}/dt/lelang?tahun={year}`) rather than plain HTML - see the
-big comment at the top of `scraper/lpse_scraper.py` for exactly how that
-was found and what each field means. For every relevant package we store:
-package ID (Kode Lelang), package name, institution, current stage/status,
-abbreviated HPS, procurement type/method, contract value (once awarded),
-several status flags (tender ulang, konsolidasi, etc.), and the package's
-own LPSE URL.
+See the big comments at the top of `scraper/lpse_scraper.py` and
+`scraper/lpse_homepage_scraper.py` for exactly how each was reverse
+engineered and what every field means. Short version: `/lelang` is
+scraped via the site's own internal JSON API (a real `requests` session +
+one POST, no browser automation), and the homepage is scraped via a plain
+anonymous HTTP GET + HTML parsing (no session needed at all).
 
 ## Limitations (honest, so nothing surprises you later)
 
-- **HPS is abbreviated, not exact.** The list API only gives values like
-  "15,9 M" or "414,4 Jt", not the precise Rupiah figure. Pagu Anggaran and
-  exact announcement dates aren't in this API at all - the site only shows
-  those on each package's own detail page, which would mean one extra
-  request per package. Left out of v1 to keep things fast; a good Phase 3+
-  candidate if you need exact figures often.
-- **No Excel export yet** (Phase 6) - for now, results live in the app and
-  the SQLite database only.
-- **No region/keyword management screens yet** (Phases 4-5) - regions and
-  keywords already live in the database and get used automatically
-  (whatever region you type gets remembered; the default keyword list is
-  seeded on first run), but there's no UI to add/edit/disable them yet
-  beyond editing `config/default_keywords.py` before the very first run.
-- **No scheduling/notifications yet** (later phase) - you run it manually,
-  twice a day, as planned for v1.
-- **Keyword matching is plain substring matching.** "jalan" matches inside
-  "Jalan", "JALAN", "jalanan", etc. This is deliberate for v1 but can
-  produce occasional false positives - see the notes at the top of
-  `services/keyword_service.py`.
-- Tested against `singkawangkota` (real data, live site) during
-  development. If a region shows an error, double check the identifier
-  matches the one in that region's LPSE URL exactly.
+- **HPS in the full list is abbreviated, not exact** ("15,9 M" rather than
+  a precise Rupiah figure). The homepage's HPS values ARE exact.
+- **Pagu Anggaran isn't exposed by either page** - only HPS and (once
+  awarded) Nilai Kontrak. Getting Pagu Anggaran would need an extra
+  request per package to its own detail page - not done yet.
+- **Ordering is a best-effort proxy, not a confirmed upload timestamp.**
+  Neither page exposes an explicit "uploaded at" field, so lists are
+  sorted earliest-to-latest by Package ID (assumed to increase over time).
+  This held true in every sample checked so far, but hasn't been
+  independently confirmed against LKPP documentation.
+- **No keyword management screen yet** - the default keyword list is
+  seeded on first run and used automatically, but editing it today means
+  editing `config/default_keywords.py` before that first run, or directly
+  in the `keywords` SQLite table.
+- **No Excel export, no scheduling/notifications yet** - both are later
+  phases; you run the app manually, twice a day, as planned for v1.
+- **Keyword matching is plain substring matching** - see the notes at the
+  top of `services/keyword_service.py` for the accepted trade-offs.
+- The homepage scraper assumes each category's badge count equals the
+  number of rows shown (i.e. nothing is silently truncated) - only
+  verified against categories with a handful of packages so far.
 
 ## Project structure
 
 ```
 kalla-aspal/
-    app.py                     Streamlit UI (Phase 1+2 prototype)
+    app.py                          Streamlit UI
     requirements.txt
-    data/                      SQLite database lives here (gitignored)
+    PROJECT_STATUS.md                Detailed status log - read this first
+    push_to_github.bat                One-click add+commit+push
+    data/                             SQLite database lives here (gitignored)
     scraper/
-        lpse_scraper.py        All HTTP + parsing logic, UI-agnostic
+        lpse_scraper.py               Full /lelang list - session + JSON API
+        lpse_homepage_scraper.py      Homepage summary - plain HTML, no session
     database/
-        models.py              SQL schema
-        database.py            Connection + queries
+        models.py                     SQL schema (7 tables)
+        database.py                   Connection + queries
     services/
-        keyword_service.py     Keyword matching (Phase 1)
-        comparison_service.py  New/existing/updated detection (Phase 2)
+        keyword_service.py            Keyword matching (shared by both scrapers)
+        comparison_service.py         New/existing/updated - /lelang dataset
+        homepage_service.py           New/existing/updated - homepage dataset
     config/
-        default_keywords.py    Seed keyword list (first run only)
-    tests/
-        test_scraper_parsing.py
-        test_keyword_service.py
-        test_comparison_service.py
+        default_keywords.py           Seed keyword list (first run only)
+    tests/                            28 offline unit tests (see below)
 ```
 
 ## Running the tests
@@ -118,15 +133,5 @@ pip install -r requirements.txt
 pytest
 ```
 
-(These were written and verified offline against real sample data captured
-from the live site, so they don't need network access to run.)
-
-## Development phases
-
-1. ✅ Basic LPSE scraper - region input, scrape, filter by keyword.
-2. ✅ SQLite database - save packages, detect duplicates/new packages.
-3. ◻ Dashboard polish (a basic one already exists inside `app.py`).
-4. ◻ Region management (add/edit/delete/activate - table already exists).
-5. ◻ Keyword management (add/edit/delete/enable - table already exists).
-6. ◻ Excel integration (import/update one reused workbook, with backups).
-7. ◻ Scrape history page, package change-history page, better error UI.
+(Written and verified offline against real sample data captured from the
+live site, so they don't need network access to run.)

@@ -7,11 +7,15 @@ app grows, this is the natural place to introduce SQLAlchemy models later
 without changing how the rest of the app calls into database.py.
 
 Tables:
-    regions           - LPSE regions the user monitors (Phase 4 manages these)
-    keywords          - road-related keyword list (Phase 5 manages these)
-    packages          - latest known state of every package we've ever seen
-    package_snapshots - history of changes to a package over time
-    scrape_runs       - a log entry for every time "Cek Tender" was run
+    regions            - LPSE regions the user monitors (add/edit/activate in the app)
+    keywords           - road-related keyword list (Phase 5 manages these)
+    packages           - latest known state of every /lelang package we've ever seen
+    package_snapshots  - history of changes to a package over time
+    scrape_runs        - a log entry for every time "Cek Tender" (full list) was run
+    homepage_packages  - latest known state of every homepage-summary package seen
+                         (kept DELIBERATELY SEPARATE from `packages` - see
+                         scraper/lpse_homepage_scraper.py docstring for why)
+    homepage_scrape_runs - a log entry for every homepage-summary check run
 """
 
 SCHEMA_SQL = """
@@ -103,6 +107,51 @@ CREATE TABLE IF NOT EXISTS scrape_runs (
     new_packages_found          INTEGER DEFAULT 0,
     updated_packages_found      INTEGER DEFAULT 0,
     status                      TEXT NOT NULL DEFAULT 'running', -- running | completed | failed
+    error_message               TEXT
+);
+
+-- Homepage ("Beranda") summary packages - see scraper/lpse_homepage_scraper.py.
+-- These come from https://spse.inaproc.id/{region}/ rather than /lelang, and
+-- carry an "Akhir Pendaftaran" (registration deadline) that the main
+-- `packages` table doesn't have. Kept as its own table on purpose so the two
+-- datasets never get mixed together in the UI.
+CREATE TABLE IF NOT EXISTS homepage_packages (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    package_id              TEXT UNIQUE,
+    fingerprint             TEXT UNIQUE,
+    region_identifier       TEXT NOT NULL,
+    section                 TEXT NOT NULL,  -- "Tender" or "Non Tender"
+    kategori                TEXT,            -- e.g. "Pekerjaan Konstruksi"
+    nama_paket              TEXT NOT NULL,
+    badges                  TEXT,            -- JSON list, e.g. ["spse 4.5", "Tender"]
+    hps_text                TEXT,
+    hps_value               REAL,
+    akhir_pendaftaran_text  TEXT,
+    akhir_pendaftaran_at    TEXT,            -- parsed ISO datetime, if parseable
+    display_position        INTEGER,         -- the site's own "No" column (reference only)
+    package_url             TEXT,
+    is_relevant             INTEGER NOT NULL DEFAULT 0,
+    matched_keywords        TEXT,            -- JSON list
+    first_seen_at           TEXT NOT NULL,
+    last_seen_at            TEXT NOT NULL,
+    last_updated_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_homepage_packages_region ON homepage_packages(region_identifier);
+CREATE INDEX IF NOT EXISTS idx_homepage_packages_relevant ON homepage_packages(is_relevant);
+
+-- One row per "Cek Ringkasan Beranda" run (separate log from scrape_runs,
+-- same reasoning as homepage_packages above).
+CREATE TABLE IF NOT EXISTS homepage_scrape_runs (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at                  TEXT NOT NULL,
+    finished_at                 TEXT,
+    regions_scraped             TEXT,   -- JSON list of region identifiers
+    total_packages_found        INTEGER DEFAULT 0,
+    relevant_packages_found     INTEGER DEFAULT 0,
+    new_packages_found          INTEGER DEFAULT 0,
+    updated_packages_found      INTEGER DEFAULT 0,
+    status                      TEXT NOT NULL DEFAULT 'running',
     error_message               TEXT
 );
 """
