@@ -16,7 +16,8 @@ Tables:
                          (kept DELIBERATELY SEPARATE from `packages` - see
                          scraper/lpse_homepage_scraper.py docstring for why)
     homepage_scrape_runs - a log entry for every homepage-summary check run
-    excel_config       - current Excel export settings (single row)
+    excel_config       - current Excel export settings, one row per dataset
+                         ('lelang' / 'beranda')
     excel_generated_rows - which (file, sheet, row) triples this app wrote,
                          so exports never touch rows/data the user entered
                          by hand - see services/excel_service.py
@@ -159,16 +160,23 @@ CREATE TABLE IF NOT EXISTS homepage_scrape_runs (
     error_message               TEXT
 );
 
--- Single-row table (id is always 1) holding the current Excel export
--- settings, set from the "Excel" tab. Kept in the database (not a config
--- file) so it survives app restarts and is easy to change from the UI.
+-- Excel export settings - ONE row per dataset ('lelang' = Daftar Lengkap,
+-- 'beranda' = Ringkasan Beranda), since Nikol asked for the two datasets
+-- to export separately rather than sharing one config. Kept in the
+-- database (not a config file) so it survives app restarts and is easy to
+-- change from the UI. See services/excel_service.py for how this is used.
+--
+-- NOTE: this replaced an earlier single-row (id=1) shape. Existing
+-- databases are migrated automatically the first time this version of the
+-- app runs - see database.py's _migrate_excel_config_table().
 CREATE TABLE IF NOT EXISTS excel_config (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),
+    dataset             TEXT PRIMARY KEY CHECK (dataset IN ('lelang', 'beranda')),
     file_path           TEXT,
-    sheet_name          TEXT NOT NULL DEFAULT 'Data LPSE',
+    sheet_name          TEXT NOT NULL,
     start_cell          TEXT NOT NULL DEFAULT 'A5',
     enabled_columns     TEXT,      -- JSON list of column field-keys, in order
     mode                TEXT NOT NULL DEFAULT 'replace',  -- 'replace' | 'append_new'
+    use_excel_table     INTEGER NOT NULL DEFAULT 1,  -- write/update a native Excel Table, not just plain cells
     updated_at          TEXT NOT NULL
 );
 

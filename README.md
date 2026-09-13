@@ -63,9 +63,13 @@ expected to be fixable, not a dead end.
    "Masa Sanggah") and see the HPS total recalculate for just that filter.
 5. Go to **Kata Kunci** to add/rename/enable/disable the keywords used to
    decide what counts as "terkait jalan", any time.
-6. Go to **Excel** to export the relevant-package list into your own
-   reused Excel workbook (configurable file/sheet/cell/columns, with
-   automatic backup before every write).
+6. Go to **Excel** - it has its own sub-tab per dataset ("Daftar Lengkap"
+   and "Ringkasan Beranda"), each exporting to its own configurable
+   file/sheet/cell/columns, with automatic backup before every write. If
+   you've already dropped an `.xlsx` file inside this project's folder,
+   it'll show up as a one-click button instead of needing a typed path.
+   Exports are written as a proper Excel Table (banded rows + filter
+   dropdowns already on) by default.
 7. Run it again in the morning and at night, per your normal workflow -
    the database remembers everything between runs.
 
@@ -134,11 +138,23 @@ anonymous HTTP GET + HTML parsing (no session needed at all).
 - The homepage scraper assumes each category's badge count equals the
   number of rows shown (i.e. nothing is silently truncated) - only
   verified against categories with a handful of packages so far.
-- **Excel export always exports the full relevant-package list**, not
-  whatever the dashboard's filter is currently narrowed to.
+- **Excel export always exports the full relevant-package list** for
+  whichever dataset you export, not whatever the dashboard's filter is
+  currently narrowed to.
+- **Excel Table formatting needs a fully-filled header row.** If any
+  header cell above your start cell is blank, the export still writes the
+  data (as plain values) but skips turning it into a formatted Table for
+  that run - use "Buat File Baru" for a file that's guaranteed to qualify.
+- **In-project Excel file auto-discovery only looks inside this project's
+  own folder** (not your whole computer) - drop your workbook in here (or
+  a subfolder) and it'll show up as a one-click button in the Excel tab.
 - **`LPSE_Monitor.exe` (via `build_exe.bat`) is unverified** - it was
   written following the standard way to package a Streamlit app with
   PyInstaller, but has not been built/tested on a real Windows machine.
+- **The Kalla Aspal color theme hasn't been visually checked** in a real
+  browser by the assistant (no Streamlit runtime available in its own
+  sandbox) - the colors/layout should look right, but a first look is
+  worth doing.
 
 ## Project structure
 
@@ -152,6 +168,7 @@ kalla-aspal/
     run_app.bat                       One-click launcher (no CMD typing)
     build_exe.bat                     Builds LPSE_Monitor.exe (unverified - see limitations)
     push_to_github.bat                One-click add+commit+push
+    .streamlit/config.toml            Base color theme (Kalla Aspal green/gold)
     data/                             SQLite database lives here (gitignored)
     backups/                           Auto-created Excel backups (gitignored)
     scraper/
@@ -159,17 +176,19 @@ kalla-aspal/
         lpse_homepage_scraper.py      Homepage summary - plain HTML, no session
     database/
         models.py                     SQL schema (9 tables)
-        database.py                   Connection + queries
+        database.py                   Connection + queries + schema migrations
     services/
         keyword_service.py            Keyword matching (shared by both scrapers)
         comparison_service.py         New/existing/updated - /lelang dataset
         homepage_service.py           New/existing/updated - homepage dataset
         filter_service.py             Dashboard filter/sort/HPS-sum helpers
         calendar_service.py           Akhir Pendaftaran calendar helpers
-        excel_service.py              Excel export (Phase 6)
+        excel_service.py              Excel export (Phase 6) - two datasets, Excel Tables, file discovery
+    ui/
+        branding.py                    Kalla Aspal colors/CSS/header banner
     config/
         default_keywords.py           Seed keyword list (first run only)
-    tests/                            50 offline unit tests (see below)
+    tests/                            56 offline unit tests (see below)
 ```
 
 ## Running the tests

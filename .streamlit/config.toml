@@ -1,0 +1,12 @@
+# Baseline Streamlit theme for LPSE Monitor, matching the KALLA ASPAL
+# wordmark (green "ALLA" + gold "K" + charcoal "ASPAL"). Streamlit's
+# config.toml only covers broad strokes (accent color, backgrounds, base
+# text color) - the finer styling (the header banner, calendar sizing,
+# button polish) is layered on top via CSS in ui/branding.py, since
+# config.toml can't express those directly.
+[theme]
+primaryColor = "#00693C"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F7F5"
+textColor = "#33383D"
+font = "sans serif"

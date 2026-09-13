@@ -37,12 +37,16 @@ def get_connection(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
-    """Create tables if they don't exist yet, and seed the default keyword
-    list the very first time (i.e. only when the keywords table is empty -
-    this will never overwrite keywords the user has since edited)."""
+    """Create tables if they don't exist yet, migrate any older-shaped
+    tables forward, and seed the default keyword list the very first time
+    (i.e. only when the keywords table is empty - this will never
+    overwrite keywords the user has since edited)."""
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA_SQL)
+        conn.commit()
+
+        _migrate_excel_config_table(conn)
         conn.commit()
 
         existing = conn.execute("SELECT COUNT(*) AS c FROM keywords").fetchone()["c"]
@@ -56,6 +60,52 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_excel_config_table(conn: sqlite3.Connection) -> None:
+    """One-time forward migration for databases created before Excel export
+    supported two separate datasets (2026-09-13 evening build used a
+    single `excel_config` row, id=1, for the Daftar Lengkap dataset only).
+
+    Safe to call every startup: it's a no-op once the table is already in
+    the new (dataset TEXT PRIMARY KEY) shape, or if the table doesn't
+    exist yet at all (a fresh install already gets the new shape straight
+    from SCHEMA_SQL, so there's nothing to migrate)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(excel_config)").fetchall()}
+    if not cols or "dataset" in cols:
+        return
+
+    old_row = conn.execute("SELECT * FROM excel_config WHERE id = 1").fetchone()
+    conn.execute("ALTER TABLE excel_config RENAME TO excel_config_old_v1")
+    conn.execute(
+        """
+        CREATE TABLE excel_config (
+            dataset             TEXT PRIMARY KEY CHECK (dataset IN ('lelang', 'beranda')),
+            file_path           TEXT,
+            sheet_name          TEXT NOT NULL,
+            start_cell          TEXT NOT NULL DEFAULT 'A5',
+            enabled_columns     TEXT,
+            mode                TEXT NOT NULL DEFAULT 'replace',
+            use_excel_table     INTEGER NOT NULL DEFAULT 1,
+            updated_at          TEXT NOT NULL
+        )
+        """
+    )
+    if old_row:
+        # The old single config was for the full-list ("lelang") export -
+        # that's the only dataset Excel export originally supported.
+        conn.execute(
+            """
+            INSERT INTO excel_config
+                (dataset, file_path, sheet_name, start_cell, enabled_columns, mode, use_excel_table, updated_at)
+            VALUES ('lelang', ?, ?, ?, ?, ?, 1, ?)
+            """,
+            (
+                old_row["file_path"], old_row["sheet_name"], old_row["start_cell"],
+                old_row["enabled_columns"], old_row["mode"], _now(),
+            ),
+        )
+    conn.execute("DROP TABLE excel_config_old_v1")
 
 
 @contextmanager
@@ -492,29 +542,35 @@ def get_last_completed_homepage_run(conn: sqlite3.Connection):
 # Excel export config + row tracking - see services/excel_service.py
 # ---------------------------------------------------------------------------
 
-def get_excel_config(conn: sqlite3.Connection):
-    return conn.execute("SELECT * FROM excel_config WHERE id = 1").fetchone()
+def get_excel_config(conn: sqlite3.Connection, dataset: str):
+    """`dataset` is 'lelang' (Daftar Lengkap) or 'beranda' (Ringkasan
+    Beranda) - the two datasets are configured and exported independently,
+    per Nikol's request to keep them separate."""
+    return conn.execute("SELECT * FROM excel_config WHERE dataset = ?", (dataset,)).fetchone()
 
 
 def save_excel_config(
     conn: sqlite3.Connection,
+    dataset: str,
     file_path: str,
     sheet_name: str,
     start_cell: str,
     enabled_columns: list,
     mode: str,
+    use_excel_table: bool = True,
 ) -> None:
     now = _now()
     conn.execute(
         """
-        INSERT INTO excel_config (id, file_path, sheet_name, start_cell, enabled_columns, mode, updated_at)
-        VALUES (1, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
+        INSERT INTO excel_config
+            (dataset, file_path, sheet_name, start_cell, enabled_columns, mode, use_excel_table, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(dataset) DO UPDATE SET
             file_path=excluded.file_path, sheet_name=excluded.sheet_name,
             start_cell=excluded.start_cell, enabled_columns=excluded.enabled_columns,
-            mode=excluded.mode, updated_at=excluded.updated_at
+            mode=excluded.mode, use_excel_table=excluded.use_excel_table, updated_at=excluded.updated_at
         """,
-        (file_path, sheet_name, start_cell, json.dumps(enabled_columns), mode, now),
+        (dataset, file_path, sheet_name, start_cell, json.dumps(enabled_columns), mode, int(use_excel_table), now),
     )
 
 

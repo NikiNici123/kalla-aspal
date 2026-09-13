@@ -5,7 +5,7 @@
 Claude sessions. Update it (append, don't overwrite) whenever something
 changes — see "How to keep this file updated" at the bottom.*
 
-Last updated: **13 September 2026 (evening update)**
+Last updated: **13 September 2026 (late night — branding, Excel Tables, two-dataset export)**
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TB
 | 4 | Region management (add/edit/delete/activate) | ✅ Done | "Wilayah LPSE" tab; add+activate+delete built, no edit-in-place yet |
 | — | Homepage summary scrape + Akhir Pendaftaran | ✅ Done | Added 2026-09-13, not in the original phase list — see §5 |
 | 5 | Keyword management (add/edit/delete/enable) | ✅ Done | "Kata Kunci" tab - add/rename/enable/disable/delete, all live |
-| 6 | Excel integration | ✅ Done | "Excel" tab - configurable file/sheet/cell/columns, replace vs append-new-only, auto-backup, row tracking |
+| 6 | Excel integration | ✅ Done | "Excel" tab, one sub-tab per dataset - configurable file/sheet/cell/columns, replace vs append-new-only, auto-backup, row tracking, native Excel Table output, in-project file auto-discovery |
 | 7 | Scrape history / package detail / better errors | 🟡 Partial | `scrape_runs` + `homepage_scrape_runs` logged; no dedicated history page or package-detail page yet |
 
 Legend: ✅ done · 🟡 partially done · ⬜ not started.
@@ -95,9 +95,8 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 - Ordering (earliest package first, latest last) is based on Package ID
   as a proxy for creation time, not a confirmed timestamp field — see §5,
   decision `2026-09-13-c`.
-- No keyword management screen — edit `config/default_keywords.py` before
-  first run, or the `keywords` table directly, until Phase 5 is built.
-- No Excel export, no scheduling/notifications — later phases.
+- No scheduling/notifications yet — both check buttons are still run
+  manually, twice a day, as planned for v1.
 - The homepage scraper's assumption that a category's badge count always
   equals its row count (i.e. nothing is truncated) is only verified
   against categories with a handful of packages so far.
@@ -117,15 +116,112 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
   day's packages) and click (shows full detail below the grid), per
   Nikol's request to avoid cluttering the view.
 - Dashboard filter/sort controls recalculate the HPS total for exactly the
-  rows currently displayed. The Excel export is separate and always
-  exports the FULL relevant-package list (Daftar Lengkap), ignoring the
-  dashboard tab's filters — exporting "only what I'm currently filtering
-  to" isn't wired up yet (flagged in §7).
+  rows currently displayed. Excel export is separate and always exports
+  the FULL relevant-package list for whichever dataset you export,
+  ignoring the dashboard tab's filters — exporting "only what I'm
+  currently filtering to" isn't wired up yet (flagged in §7).
+- **Excel Table support depends on the header row already having text in
+  every exported column** (see §5 entry below) — if it's blank, the
+  export still writes the data as plain values, it just skips turning it
+  into a formatted Table for that run. Use "Buat File Baru" to get a
+  correctly-headered file from scratch.
+- The Kalla Aspal color theme (`ui/branding.py`, `.streamlit/config.toml`)
+  has not been visually checked in a real browser by the assistant — no
+  Streamlit runtime available in this sandbox (see below). CSS selectors
+  target Streamlit's `data-testid` attributes, which are reasonably
+  stable, but a future Streamlit version could rename them, in which case
+  the affected styling would just silently stop applying (not crash).
+- In-project Excel file auto-discovery only scans this project's own
+  folder (not the whole computer) — by design, see services/excel_service.py.
 
 ## 5. Changelog
 
 Newest first. Each entry: what changed, why, and any decision worth
 remembering.
+
+### 2026-09-13 (late night) — Branding, Excel Tables + two-dataset export, smaller calendar, cleanup
+
+- **(a) Kalla Aspal branding.** New `ui/branding.py` + `.streamlit/config.toml`
+  give the app a color system taken from the real KALLA ASPAL wordmark
+  (gold `#F2A900`, green `#00693C`, charcoal `#33383D`) instead of
+  Streamlit's generic defaults — a header banner echoing the wordmark,
+  styled buttons/tabs/metrics/dividers, all traced back to a handful of
+  named color tokens in one file so the "look" stays easy to adjust later.
+  No logo image file is used (avoids losing track of an asset file) - the
+  wordmark is recreated in styled text.
+- **(b) Excel export now split into two, per-dataset panels.** The Excel
+  tab has its own "Daftar Lengkap" and "Ringkasan Beranda" sub-tabs, each
+  with independent file/sheet/cell/column/mode settings and its own
+  export button — exporting one never touches the other's file or
+  tracked rows. `excel_config` is now keyed by `dataset`
+  (`'lelang'`/`'beranda'`) instead of a single row; **existing databases
+  migrate automatically** on next start (`_migrate_excel_config_table` in
+  `database.py`) — the old single config becomes the `'lelang'` config,
+  `'beranda'` starts fresh. Column sets differ per dataset (Beranda adds
+  Bagian/Kategori/Akhir Pendaftaran instead of Jenis Pengadaan/Status).
+- **(c) Exports now write/update a native Excel Table**, not just plain
+  cell values — banded rows + filter dropdowns are turned on
+  automatically, so opening the workbook shows a ready-made table. Every
+  export re-uses the SAME named table (`TabelDaftarLengkap` /
+  `TabelRingkasanBeranda`) and just updates its range, instead of leaving
+  a stale table behind or piling up duplicates as row counts change. Two
+  safety checks, both tested: if the header row has a blank cell, or a
+  DIFFERENT table already covers the same cells (e.g. Nikol made one by
+  hand in Excel), table-ification is skipped for that export and the data
+  is still written as plain values — never a corrupted/overlapping table.
+  Toggle-able per dataset via a checkbox (on by default).
+- **(d) In-project Excel file auto-discovery.** The Excel tab now scans
+  the project folder itself (skipping `backups/`, `venv/`, `.git/`, Excel
+  lock files) for `.xlsx` files and shows them as one-click buttons — so
+  dropping a workbook straight into the project folder (as Nikol did)
+  means picking it from a button instead of typing/pasting a path.
+  Deliberately scoped to just this folder, not the whole computer.
+- **(e) Bug fix: keyword rename no longer saves on every keystroke.** The
+  "Kata Kunci" tab's inline rename box was wired directly to the keyword
+  row, so Streamlit's rerun-on-every-interaction behavior meant it wrote
+  to the database (and jumped the cursor) on each letter typed. Replaced
+  with a small popover + form (explicit "Simpan" button) — found and
+  fixed during this session's own code-cleanliness pass, before Nikol hit
+  it, since it's not yet been exercised on the real app.
+- **(f) Smaller calendar.** The Ringkasan Beranda calendar is now wrapped
+  in a narrower centered column plus a scoped container
+  (`ui.branding.CALENDAR_CONTAINER_KEY`) with smaller buttons/spacing, so
+  it takes up noticeably less vertical space than before.
+- **(g) Readability/performance pass on `app.py`.** Extracted the
+  repeated "new/updated packages + region status" block into
+  `render_result_banner()` and the whole Excel panel into
+  `render_excel_export_panel(dataset, rows_getter)` used for both
+  datasets, instead of duplicating that UI twice. Also fixed a latent bug
+  found during this pass: the calendar's "selected date" lookup could
+  reference an undefined `grouped` dict if the Beranda dataset was empty
+  on a later run after previously having data (now always initialized).
+  Performance-wise: kept changes to what could actually be verified
+  offline (no live Streamlit to profile in this sandbox — see §4) —
+  mainly the keystroke-write bugfix above and caching the (plain-string,
+  safely cacheable) file-discovery scan; did NOT add broad SQLite query
+  caching, since that risks showing stale data after a scrape without a
+  live app to verify cache invalidation against.
+- 9 new/updated Excel tests (two-dataset export, Excel Table
+  create/update/skip-on-blank-header/respect-user's-own-table, file
+  discovery) — 56 total, all passing.
+- `requirements.txt`: bumped `streamlit` floor to `>=1.37` (needs
+  `st.container(key=...)`, used to scope the calendar's CSS).
+
+### 2026-09-13 (night) — Fixed run_app.bat not installing new dependencies
+
+- **Bug found by Nikol on first real run:** `ModuleNotFoundError: No
+  module named 'openpyxl'` when launching via `run_app.bat`. Cause:
+  `run_app.bat` only ran `pip install -r requirements.txt` the very first
+  time it created the `venv` folder - since Nikol's `venv` already existed
+  from the original Phase 1+2 setup (before `openpyxl` was added to
+  `requirements.txt` for the Excel feature), it was never installed.
+- **Fix:** `run_app.bat` now always runs `pip install --quiet -r
+  requirements.txt` on every launch, not just on first setup. `pip` skips
+  anything already installed at the right version, so this stays fast on
+  normal runs and automatically picks up any future new dependency.
+- **This is the first confirmed real-machine bug** — everything before
+  this had only been verified via offline tests or a browser session, per
+  §4. Good sign that the rest of the app got this far without erroring.
 
 ### 2026-09-13 (evening) — Dashboard filters, deadline calendar, Kata Kunci tab, Excel export, packaging scripts
 
@@ -236,24 +332,23 @@ remembering.
 | `scrape_runs` | Log of every full-list ("Cek Tender") run |
 | `homepage_packages` | Latest known state of every homepage-summary package seen |
 | `homepage_scrape_runs` | Log of every homepage-summary ("Cek Ringkasan Beranda") run |
-| `excel_config` | Current Excel export settings (single row) - file path, sheet, start cell, columns, mode |
+| `excel_config` | Current Excel export settings, one row per dataset (`lelang`/`beranda`) - file path, sheet, start cell, columns, mode, Excel-Table toggle |
 | `excel_generated_rows` | Which (file, sheet, row) triples this app wrote - so exports never touch rows a person entered by hand |
 
 ## 7. Open decisions / suggested next steps
 
 Not yet decided — Nikol's call:
 
-1. **Verify on Nikol's actual PC** — first real run of `run_app.bat`
-   (or `streamlit run app.py`), first real double-click of
-   `push_to_github.bat`, first real `build_exe.bat`, sanity-check against
-   a region other than `singkawangkota`/`kalbarprov`. This is now the
-   single biggest unknown, since everything so far has only been verified
-   offline or against the live site through a browser session — never on
-   Windows.
+1. **Verify the app visually on Nikol's actual PC.** `run_app.bat` has
+   been confirmed to at least launch (it surfaced the missing-`openpyxl`
+   bug, now fixed — see §5), but the assistant has never seen the app
+   render in a real browser: the Kalla Aspal branding/colors, the smaller
+   calendar, the two Excel sub-tabs, and `build_exe.bat` are all still
+   unverified beyond offline logic tests. Worth a quick look-over.
 2. **Excel export scope** — right now it always exports the FULL relevant
-   list, ignoring the dashboard's active filter. Worth revisiting once
-   Nikol has used the filter/Excel tab a bit and knows whether "export only
-   what I'm currently filtering to" is actually wanted.
+   list for a dataset, ignoring the dashboard's active filter. Worth
+   revisiting once Nikol has used the filter/Excel tab a bit and knows
+   whether "export only what I'm currently filtering to" is actually wanted.
 3. **Finish Phase 3** — a proper dashboard/landing page, rather than
    metrics + filters embedded inside each tab.
 4. **Finish Phase 7** — a dedicated scrape-history view and a per-package

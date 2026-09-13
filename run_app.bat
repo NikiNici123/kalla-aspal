@@ -15,11 +15,18 @@ if not exist venv (
         pause
         exit /b 1
     )
-    call venv\Scripts\activate.bat
-    pip install --quiet -r requirements.txt
-) else (
-    call venv\Scripts\activate.bat
 )
+
+call venv\Scripts\activate.bat
+
+REM Always (re)install requirements, not just on first setup - this makes
+REM sure that if requirements.txt gains a new package later (e.g. openpyxl
+REM for the Excel feature), an already-existing venv from before still
+REM picks it up automatically instead of erroring with "No module named
+REM ...". pip skips anything already installed at the right version, so
+REM this stays fast on every normal run.
+echo Memeriksa dependensi...
+pip install --quiet -r requirements.txt
 
 echo Menjalankan LPSE Monitor... browser akan terbuka otomatis.
 streamlit run app.py
