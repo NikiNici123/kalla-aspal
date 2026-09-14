@@ -1,15 +1,13 @@
 """
-Kalla Aspal - LPSE Monitor: Phase 1-4 + partial Phase 3/5/6/7 prototype.
+Kalla Aspal - LPSE Monitor
 
 A local-first Streamlit app for admin staff to check LPSE/SPSE tender
 listings for new road-construction packages, twice a day.
 
 Run with:  streamlit run app.py
-(see README.md for full Windows setup instructions, or double-click
-run_app.bat, which does this for you)
+(see README.md for Windows setup, or just double-click run_app.bat)
 
-This app deliberately keeps TWO separate datasets/flows, per project
-decision (see PROJECT_STATUS.md "2026-09-13" entry for why):
+There are two separate datasets/flows here, kept intentionally apart:
 
   1. "Cek Tender (Daftar Lengkap)" - the full /lelang tender list for the
      year (every status: open, closed, failed, ...). No deadline date.
@@ -17,20 +15,20 @@ decision (see PROJECT_STATUS.md "2026-09-13" entry for why):
      Tender summary, which DOES carry a registration deadline
      ("Akhir Pendaftaran") but only for what the homepage currently shows.
 
-They use different scraper modules, different database tables, different
-services, and different tabs below - never mixed together. The Excel tab
-mirrors this split too: each dataset has its own file/sheet/column
-configuration and exports independently (see services/excel_service.py).
+Different scraper modules, different database tables, different services,
+different tabs - they never get mixed together. The Excel tab mirrors the
+split too: each dataset gets its own file/sheet/column setup and exports
+independently (services/excel_service.py).
 
-Ordering convention used everywhere in this app: relevant packages are
-listed EARLIEST first, LATEST last, using Package ID (Kode Lelang) as a
-stand-in for upload order (see database/database.py's
-_CHRONOLOGICAL_ORDER_SQL comment for why). Filtering/sorting controls in
-each tab operate on top of that base order - see services/filter_service.py.
+Packages are always listed earliest first, latest last, using the
+Package ID (Kode Lelang) as a stand-in for upload order - see
+database.py's _CHRONOLOGICAL_ORDER_SQL. Filter/sort controls on each tab
+apply on top of that base order (services/filter_service.py).
 """
 
 from __future__ import annotations
 
+import html
 import json
 from datetime import date
 
@@ -41,7 +39,9 @@ from scraper.lpse_scraper import build_lelang_url
 from scraper.lpse_homepage_scraper import build_homepage_url
 from services.comparison_service import run_scrape_and_compare
 from services.homepage_service import run_homepage_scrape_and_compare
-from services import filter_service, calendar_service, excel_service
+from services import (
+    activity_service, filter_service, calendar_service, excel_service, status_flags, region_import_service,
+)
 from ui import branding
 
 st.set_page_config(**branding.PAGE_CONFIG_KWARGS)
@@ -102,6 +102,70 @@ def render_filter_controls(rows, key_prefix, status_field, status_label, kategor
     return sorted_rows
 
 
+def paket_link_markdown(nama_paket: str, package_url) -> str:
+    """Bold package name, itself a clickable markdown link straight to the
+    LPSE page when a URL is known (falls back to plain bold text
+    otherwise). Square brackets are escaped since they're markdown
+    link-syntax characters - keeps the link intact even on the rare
+    package name that happens to contain one."""
+    safe_name = nama_paket.replace("[", "\\[").replace("]", "\\]")
+    if package_url:
+        return f"**[{safe_name}]({package_url})**"
+    return f"**{safe_name}**"
+
+
+def render_package_card(nama_paket, package_url, meta_items, is_new, change_summary=None) -> None:
+    """One package card, shared by "Paket Baru"/"Paket Diperbarui" in BOTH
+    check tabs - same Notion-style visual family as the Dashboard's
+    activity feed (ui/branding.py's `.kalla-pkg-*` CSS), so a package looks
+    like the same kind of thing whether it's shown right after a check or
+    later in "Aktivitas Terbaru". Replaces the old plain "**Label:** value"
+    text columns with a compact icon+label meta row, and folds the
+    gagal/batal/diulang status-flag warning (services/status_flags.py)
+    into the card itself as small pills instead of a separate st.warning.
+
+    `meta_items` is a list of (icon, label, value) tuples - one per field
+    worth showing for this dataset (region, status, HPS, a date, ...);
+    callers pick which fields matter for Daftar Lengkap vs. Ringkasan
+    Beranda. All user-controlled text is HTML-escaped since this renders
+    via unsafe_allow_html."""
+    css_class = "new" if is_new else "updated"
+    safe_name = html.escape(nama_paket)
+
+    if package_url:
+        title_html = f'<a class="kalla-pkg-title" href="{html.escape(package_url)}" target="_blank">{safe_name}</a>'
+    else:
+        title_html = f'<span class="kalla-pkg-title">{safe_name}</span>'
+
+    meta_html = "".join(
+        f'<span class="kalla-pkg-meta-item">{icon} {label}: '
+        f'<b>{html.escape(str(value)) if value else "-"}</b></span>'
+        for icon, label, value in meta_items
+    )
+
+    diff_html = ""
+    if not is_new and change_summary:
+        diff_html = f'<div class="kalla-pkg-diff">{html.escape(change_summary)}</div>'
+
+    flags = status_flags.detect_status_flags(nama_paket)
+    flags_html = ""
+    if flags:
+        pills = "".join(f'<span class="kalla-activity-pill flag">⚠️ {html.escape(f)}</span>' for f in flags)
+        flags_html = f'<div class="kalla-pkg-flags">{pills}</div>'
+
+    st.markdown(
+        f"""
+        <div class="kalla-pkg-card {css_class}">
+            {title_html}
+            <div class="kalla-pkg-meta">{meta_html}</div>
+            {diff_html}
+            {flags_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_result_banner(result_state, new_label):
     """Shared "N PAKET BARU DITEMUKAN" banner + region-by-region status
     block, used by both the Daftar Lengkap and Ringkasan Beranda check
@@ -127,11 +191,49 @@ def render_result_banner(result_state, new_label):
     return result_state["new"], result_state["updated"]
 
 
+def render_activity_card(entry) -> None:
+    """One Notion-style card in the "Aktivitas Terbaru" feed: a hairline
+    border, a thin green/gold left accent for new/updated, the package
+    name itself as the clickable link (same idea as the calendar's detail
+    list), and small pills for dataset + status flags. All user-controlled
+    text is HTML-escaped since this is rendered via unsafe_allow_html."""
+    css_class = "is-new" if entry.is_new else "is-updated"
+    safe_name = html.escape(entry.nama_paket)
+
+    if entry.package_url:
+        title_html = f'<a class="kalla-activity-title" href="{html.escape(entry.package_url)}" target="_blank">{safe_name}</a>'
+    else:
+        title_html = f'<span class="kalla-activity-title">{safe_name}</span>'
+
+    pills = f'<span class="kalla-activity-pill dataset">{entry.dataset_label}</span>'
+    if entry.is_new:
+        pills += '<span class="kalla-activity-pill new">Baru</span>'
+    for flag in entry.status_flags:
+        pills += f'<span class="kalla-activity-pill flag">{html.escape(flag)}</span>'
+
+    timestamp = entry.created_at.replace("T", " ")[:16] if entry.created_at else "-"
+    summary_html = ""
+    if not entry.is_new and entry.change_summary:
+        summary_html = f'<div class="kalla-activity-summary">{html.escape(entry.change_summary)}</div>'
+
+    st.markdown(
+        f"""
+        <div class="kalla-activity-card {css_class}">
+            {title_html}
+            <div class="kalla-activity-meta">{pills} &middot; {timestamp}</div>
+            {summary_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dashboard header
 # ---------------------------------------------------------------------------
 
 branding.render_header()
+branding.render_road_strip()
 
 with db.connect() as conn:
     active_regions = db.get_active_regions(conn)
@@ -146,10 +248,10 @@ last_check = latest_timestamp(
 )
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Terakhir Cek", last_check[:16].replace("T", " ") if last_check else "Belum pernah")
-col2.metric("Wilayah Aktif", len(active_regions))
-col3.metric("Paket Relevan - Daftar Lengkap", relevant_total)
-col4.metric("Paket Relevan - Ringkasan Beranda", relevant_homepage_total)
+col1.metric("\U0001F553 Terakhir Cek", last_check[:16].replace("T", " ") if last_check else "Belum pernah")
+col2.metric("\U0001F4CD Wilayah Aktif", len(active_regions))
+col3.metric("\U0001F4CB Daftar Lengkap", relevant_total, help="Jumlah paket relevan di dataset Daftar Lengkap")
+col4.metric("\U0001F4C5 Ringkasan Beranda", relevant_homepage_total, help="Jumlah paket relevan di dataset Ringkasan Beranda")
 
 if not active_regions:
     st.warning(
@@ -159,8 +261,9 @@ if not active_regions:
 
 st.divider()
 
-tab_lelang, tab_beranda, tab_kata_kunci, tab_excel, tab_wilayah = st.tabs(
+tab_dashboard, tab_lelang, tab_beranda, tab_kata_kunci, tab_excel, tab_wilayah = st.tabs(
     [
+        "\U0001F3E0 Dashboard",
         "\U0001F50D Cek Tender (Daftar Lengkap)",
         "\U0001F4C5 Ringkasan Beranda (Akhir Pendaftaran)",
         "\U0001F511 Kata Kunci",
@@ -168,6 +271,30 @@ tab_lelang, tab_beranda, tab_kata_kunci, tab_excel, tab_wilayah = st.tabs(
         "\U0001F5FA Wilayah LPSE",
     ]
 )
+
+# ---------------------------------------------------------------------------
+# TAB 0: Dashboard - "Aktivitas Terbaru" (recent activity across both datasets)
+# ---------------------------------------------------------------------------
+
+with tab_dashboard:
+    st.caption(
+        "Aktivitas terbaru dari KEDUA dataset (Daftar Lengkap & Ringkasan Beranda) - paket baru "
+        "ditemukan atau paket yang datanya berubah (termasuk perubahan nama paket dan kata status "
+        "seperti \"gagal\"/\"batal\"/\"diulang\"), diurutkan dari yang paling baru."
+    )
+
+    with db.connect() as conn:
+        recent_activity = activity_service.get_recent_activity(conn, limit=30)
+
+    if not recent_activity:
+        st.markdown(
+            '<div class="kalla-activity-empty">Belum ada aktivitas tersimpan. Jalankan pemeriksaan '
+            'tender di tab lain untuk mulai mengumpulkan riwayat perubahan.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        for entry in recent_activity:
+            render_activity_card(entry)
 
 # ---------------------------------------------------------------------------
 # TAB 1: full /lelang list check
@@ -222,20 +349,26 @@ with tab_lelang:
         if new_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
             for pkg in new_pkgs:
-                with st.container(border=True):
-                    st.markdown(f"**{pkg['nama_paket']}**")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.write(f"**Wilayah:** {pkg['region_identifier']}")
-                    c2.write(f"**Status:** {pkg['tahapan']}")
-                    c3.write(f"**HPS:** {pkg['hps_text'] or '-'}")
-                    c4.write(f"**Ditemukan:** {pkg['scraped_at']}")
-                    if pkg.get("package_url"):
-                        st.markdown(f"[Buka di LPSE]({pkg['package_url']})")
+                render_package_card(
+                    pkg["nama_paket"], pkg.get("package_url"),
+                    meta_items=[
+                        ("\U0001F4CD", "Wilayah", pkg["region_identifier"]),
+                        ("\U0001F3D7️", "Status", pkg["tahapan"]),
+                        ("\U0001F4B0", "HPS", pkg["hps_text"]),
+                        ("\U0001F553", "Ditemukan", pkg["scraped_at"]),
+                    ],
+                    is_new=True,
+                )
 
         if updated_pkgs:
             st.markdown("### \U0001F501 Paket Diperbarui")
             for pkg in updated_pkgs:
-                st.write(f"- **{pkg['nama_paket']}** ({pkg['region_identifier']}): {pkg.get('_change_summary', '')}")
+                render_package_card(
+                    pkg["nama_paket"], pkg.get("package_url"),
+                    meta_items=[("\U0001F4CD", "Wilayah", pkg["region_identifier"])],
+                    is_new=False,
+                    change_summary=pkg.get("_change_summary", ""),
+                )
 
     st.divider()
     st.subheader("Paket Relevan Tersimpan - Daftar Lengkap")
@@ -253,18 +386,32 @@ with tab_lelang:
         st.dataframe(
             [
                 {
-                    "Kode Lelang": r["package_id"] or "-",
                     "Nama Paket": r["nama_paket"],
+                    # Persistent "new/updated" flag - see filter_service.is_recent().
+                    # Distinct from the "Paket Baru" cards above: those only
+                    # exist right after a check in THIS session, this column
+                    # stays visible for RECENT_WINDOW_HOURS even after a
+                    # restart, so nothing gets missed just because nobody
+                    # reopened the app the same day it changed.
+                    "\U0001F195 Baru": "\U0001F195 Baru" if filter_service.is_recent(r["last_updated_at"]) else "",
+                    "Kode Lelang": r["package_id"] or "-",
                     "Wilayah": r["region_identifier"],
                     "Status": r["tahapan"],
                     "Jenis Pengadaan": r["jenis_pengadaan"],
                     "HPS": r["hps_text"],
+                    "Catatan": " / ".join(status_flags.detect_status_flags(r["nama_paket"])) or "-",
                     "Pertama Ditemukan": r["first_seen_at"],
                     "Terakhir Diperbarui": r["last_updated_at"],
+                    "Link": r["package_url"] or "",
                 }
                 for r in display_rows
             ],
             use_container_width=True, hide_index=True,
+            column_config={
+                "Nama Paket": st.column_config.TextColumn(width="large"),
+                "\U0001F195 Baru": st.column_config.TextColumn(width="small"),
+                "Link": st.column_config.LinkColumn(display_text="\U0001F517 Buka", width="small"),
+            },
         )
 
 # ---------------------------------------------------------------------------
@@ -320,20 +467,26 @@ with tab_beranda:
         if new_hp_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
             for pkg in new_hp_pkgs:
-                with st.container(border=True):
-                    st.markdown(f"**{pkg['nama_paket']}**")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.write(f"**Wilayah:** {pkg['region_identifier']}")
-                    c2.write(f"**Bagian:** {pkg['section']} / {pkg['kategori']}")
-                    c3.write(f"**HPS:** {pkg['hps_text'] or '-'}")
-                    c4.write(f"**Akhir Pendaftaran:** {pkg['akhir_pendaftaran_text'] or '-'}")
-                    if pkg.get("package_url"):
-                        st.markdown(f"[Buka di LPSE]({pkg['package_url']})")
+                render_package_card(
+                    pkg["nama_paket"], pkg.get("package_url"),
+                    meta_items=[
+                        ("\U0001F4CD", "Wilayah", pkg["region_identifier"]),
+                        ("\U0001F5C2️", "Bagian", f"{pkg['section']} / {pkg['kategori']}"),
+                        ("\U0001F4B0", "HPS", pkg["hps_text"]),
+                        ("\U0001F4C5", "Akhir Pendaftaran", pkg["akhir_pendaftaran_text"]),
+                    ],
+                    is_new=True,
+                )
 
         if updated_hp_pkgs:
             st.markdown("### \U0001F501 Paket Diperbarui")
             for pkg in updated_hp_pkgs:
-                st.write(f"- **{pkg['nama_paket']}** ({pkg['region_identifier']}): {pkg.get('_change_summary', '')}")
+                render_package_card(
+                    pkg["nama_paket"], pkg.get("package_url"),
+                    meta_items=[("\U0001F4CD", "Wilayah", pkg["region_identifier"])],
+                    is_new=False,
+                    change_summary=pkg.get("_change_summary", ""),
+                )
 
     st.divider()
     st.subheader("Kalender Akhir Pendaftaran")
@@ -350,8 +503,8 @@ with tab_beranda:
         st.session_state.setdefault("cal_selected_date", None)
 
         # Narrower, centered column + a scoped container (see
-        # ui/branding.py's CALENDAR_CONTAINER_KEY) - keeps the calendar
-        # compact instead of stretching full-width, per Nikol's request.
+        # ui/branding.py's CALENDAR_CONTAINER_KEY) so the calendar stays
+        # compact instead of stretching full-width.
         _, cal_mid, _ = st.columns([1, 2, 1])
         with cal_mid:
             with st.container(key=branding.CALENDAR_CONTAINER_KEY):
@@ -400,13 +553,13 @@ with tab_beranda:
             st.markdown(f"**Paket dengan Akhir Pendaftaran {selected}:**")
             for p in grouped[selected]:
                 with st.container(border=True):
-                    st.markdown(f"**{p['nama_paket']}**")
+                    # Package name is the clickable link straight to the
+                    # LPSE page - no separate "Buka di LPSE" line needed.
+                    st.markdown(paket_link_markdown(p["nama_paket"], p["package_url"]))
                     c1, c2, c3 = st.columns(3)
                     c1.write(f"**Wilayah:** {p['region_identifier']}")
                     c2.write(f"**Bagian:** {p['section']} / {p['kategori']}")
                     c3.write(f"**HPS:** {p['hps_text'] or '-'}")
-                    if p["package_url"]:
-                        st.markdown(f"[Buka di LPSE]({p['package_url']})")
         elif selected:
             st.session_state["cal_selected_date"] = None
 
@@ -422,18 +575,26 @@ with tab_beranda:
         st.dataframe(
             [
                 {
-                    "Kode Lelang": r["package_id"] or "-",
                     "Nama Paket": r["nama_paket"],
+                    "\U0001F195 Baru": "\U0001F195 Baru" if filter_service.is_recent(r["last_updated_at"]) else "",
+                    "Kode Lelang": r["package_id"] or "-",
                     "Wilayah": r["region_identifier"],
                     "Bagian": r["section"],
                     "Kategori": r["kategori"],
                     "HPS": r["hps_text"],
                     "Akhir Pendaftaran": r["akhir_pendaftaran_text"],
+                    "Catatan": " / ".join(status_flags.detect_status_flags(r["nama_paket"])) or "-",
                     "Pertama Ditemukan": r["first_seen_at"],
+                    "Link": r["package_url"] or "",
                 }
                 for r in display_hp_rows
             ],
             use_container_width=True, hide_index=True,
+            column_config={
+                "Nama Paket": st.column_config.TextColumn(width="large"),
+                "\U0001F195 Baru": st.column_config.TextColumn(width="small"),
+                "Link": st.column_config.LinkColumn(display_text="\U0001F517 Buka", width="small"),
+            },
         )
 
 # ---------------------------------------------------------------------------
@@ -532,8 +693,7 @@ def render_excel_export_panel(dataset: str, rows_getter):
     """One full export panel (file picker, sheet/cell/column/mode
     settings, create/save/export buttons) for a single dataset. Called
     once per dataset below, so Daftar Lengkap and Ringkasan Beranda each
-    get their own independent configuration and their own export button -
-    per Nikol's request to keep the two exports separate."""
+    keep their own independent configuration and export button."""
     dataset_label = excel_service.DATASET_LABELS[dataset]
 
     with db.connect() as conn:
@@ -678,7 +838,8 @@ with tab_wilayah:
     st.caption(
         "Tambahkan semua wilayah LPSE yang ingin dipantau di sini. Kedua tombol cek tender di tab "
         "lain akan otomatis memeriksa SEMUA wilayah berstatus Aktif - tidak perlu mengetik ulang "
-        "setiap kali."
+        "setiap kali. Menambahkan banyak wilayah sekaligus? Buka **Import Massal** di bawah - tidak "
+        "perlu mengisi satu-satu."
     )
 
     with st.form("form_tambah_wilayah", clear_on_submit=True):
@@ -709,6 +870,104 @@ with tab_wilayah:
                 st.rerun()
             else:
                 st.error(msg)
+
+    with st.expander("\U0001F4E5 Import Massal Wilayah (dari daftar atau bookmark browser)"):
+        st.caption(
+            "Tambahkan banyak wilayah sekaligus, daripada mengisi form di atas satu per satu."
+        )
+        import_mode = st.radio(
+            "Sumber",
+            ["Tempel daftar URL / identifier", "Upload file bookmark (.html)"],
+            horizontal=True,
+            key="bulk_import_mode",
+        )
+
+        candidates: list = []
+        no_match_hint = None
+
+        if import_mode == "Tempel daftar URL / identifier":
+            pasted = st.text_area(
+                "Satu per baris - boleh berupa URL LPSE lengkap atau langsung identifier-nya saja. "
+                "Bisa ditempel dari mana saja (email, Excel, chat) - tidak harus dari browser.",
+                placeholder=(
+                    "https://spse.inaproc.id/singkawangkota/lelang\n"
+                    "kalbarprov\n"
+                    "https://spse.inaproc.id/pontianakkota/"
+                ),
+                key="bulk_import_text",
+                height=120,
+            )
+            if pasted.strip():
+                candidates = region_import_service.extract_region_identifiers_from_text(pasted)
+                if not candidates:
+                    no_match_hint = "Tidak ada URL LPSE atau identifier yang dikenali dari teks di atas."
+        else:
+            st.caption(
+                "Di Chrome: buka **chrome://bookmarks**, klik menu titik tiga (⋮) di kanan atas -> "
+                "**Export bookmarks**, lalu upload file .html hasil export-nya di sini. Berlaku juga "
+                "untuk Edge dan Firefox (format file exportnya sama). Semua link LPSE "
+                "(spse.inaproc.id) di dalamnya akan otomatis dikenali - bookmark situs lain di file "
+                "yang sama akan diabaikan, jadi aman meng-upload export SELURUH bookmark, tidak "
+                "perlu folder khusus LPSE dulu."
+            )
+            uploaded_bookmarks = st.file_uploader(
+                "File bookmark (.html)", type=["html", "htm"], key="bulk_import_file",
+            )
+            if uploaded_bookmarks is not None:
+                bookmarks_html = uploaded_bookmarks.read().decode("utf-8", errors="ignore")
+                candidates = region_import_service.extract_region_identifiers_from_bookmarks_html(bookmarks_html)
+                if not candidates:
+                    no_match_hint = "Tidak ada link LPSE (spse.inaproc.id) yang ditemukan di file bookmark ini."
+
+        if no_match_hint:
+            st.caption(no_match_hint)
+
+        if candidates:
+            with db.connect() as conn:
+                existing_ids = {r["region_identifier"] for r in db.get_all_regions(conn)}
+            new_candidates = [c for c in candidates if c not in existing_ids]
+            already_count = len(candidates) - len(new_candidates)
+
+            summary = f"Ditemukan **{len(candidates)}** wilayah"
+            if already_count:
+                summary += f" ({already_count} sudah ada di daftar, dilewati otomatis)"
+            st.write(summary + ".")
+
+            if new_candidates:
+                selected = st.multiselect(
+                    "Pilih wilayah yang ingin ditambahkan",
+                    new_candidates,
+                    default=new_candidates,
+                    key="bulk_import_selected",
+                )
+                if st.button(
+                    "Import Wilayah Terpilih", type="primary", disabled=not selected, key="bulk_import_submit",
+                ):
+                    added, failed = 0, []
+                    with db.connect() as conn:
+                        for identifier in selected:
+                            ok, msg = db.add_region(
+                                conn,
+                                region_name=identifier,
+                                region_identifier=identifier,
+                                base_url=build_lelang_url(identifier),
+                            )
+                            if ok:
+                                added += 1
+                            else:
+                                failed.append(f"{identifier}: {msg}")
+                    if added:
+                        st.success(
+                            f"{added} wilayah berhasil ditambahkan. Nama wilayahnya masih sama dengan "
+                            "identifier-nya - hapus dan tambahkan ulang lewat form di atas kalau ingin "
+                            "nama yang lebih rapi."
+                        )
+                    if failed:
+                        st.warning("Gagal ditambahkan: " + "; ".join(failed))
+                    if added:
+                        st.rerun()
+            else:
+                st.caption("Semua wilayah yang ditemukan sudah ada di daftar - tidak ada yang perlu diimport.")
 
     st.divider()
     st.markdown("**Daftar Wilayah**")

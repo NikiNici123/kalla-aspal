@@ -1,17 +1,16 @@
 """
-Excel export for LPSE Monitor (Phase 6).
+Excel export for LPSE Monitor.
 
 Exports relevant packages into ONE reused Excel workbook that senior staff
-already work with, rather than generating a new file every time - per the
-project brief's "VERY IMPORTANT" Excel section. The two datasets the rest
-of the app keeps separate (see PROJECT_STATUS.md) export separately here
-too: `DATASET_LELANG` ("Daftar Lengkap", the full /lelang list) and
-`DATASET_BERANDA` ("Ringkasan Beranda", the homepage summary with Akhir
-Pendaftaran) each have their own file/sheet/column/mode configuration
-(`excel_config`, keyed by dataset) and their own row-tracking
-(`excel_generated_rows`, keyed by file+sheet).
+already work with, rather than generating a new file every time. The two
+datasets the rest of the app keeps separate (see PROJECT_STATUS.md) export
+separately here too: `DATASET_LELANG` ("Daftar Lengkap", the full /lelang
+list) and `DATASET_BERANDA` ("Ringkasan Beranda", the homepage summary
+with Akhir Pendaftaran) each have their own file/sheet/column/mode
+configuration (`excel_config`, keyed by dataset) and their own
+row-tracking (`excel_generated_rows`, keyed by file+sheet).
 
-Safety rules this module enforces (all non-negotiable, per the brief):
+Safety rules this module enforces:
   1. ALWAYS back up the target file before touching it (see backup_file).
   2. NEVER write outside the configured sheet/start-cell area - other
      sheets, and any cell in this sheet the app didn't itself write, are
@@ -34,15 +33,15 @@ a native Excel Table (banded rows, filter dropdowns already turned on) -
 so opening the workbook shows a ready-made table, and re-exporting later
 updates that SAME table's range instead of leaving a stale one behind or
 creating a second one. If the header row is missing text in any exported
-column, or a DIFFERENT table already covers the same cells (e.g. the user
+column, or a DIFFERENT table already covers the same cells (e.g. someone
 made their own Table over this range by hand), table-ification is skipped
 for that export and only plain values are written - see _apply_excel_table.
 
 Column mapping is configurable (which columns, in a fixed sensible order -
-see DEFAULT_COLUMNS) rather than hardcoded, per the brief. Note: the
-original spec's suggested columns included "Pagu Anggaran", which isn't
-available from either scraper (see PROJECT_STATUS.md limitations) - it's
-left out rather than filled with a misleading duplicate of HPS.
+see DEFAULT_COLUMNS) rather than hardcoded. One column worth flagging:
+"Pagu Anggaran" isn't included, because it isn't available from either
+scraper (see PROJECT_STATUS.md limitations) - left out rather than filled
+in with a misleading duplicate of HPS.
 """
 
 from __future__ import annotations
@@ -170,11 +169,11 @@ def backup_file(file_path: Path) -> Path:
 
 
 def discover_excel_files(base_dir: Path = PROJECT_ROOT) -> list:
-    """Find .xlsx files already sitting inside the project folder, so a
-    user who just drops their workbook in there (as Nikol did) doesn't
-    have to look up and type/paste a full path. Deliberately scoped to
-    ONLY this project folder - scanning the whole computer would be slow
-    and would mean guessing at files the app has no business touching.
+    """Find .xlsx files already sitting inside the project folder, so
+    someone who just drops their workbook in there doesn't have to look
+    up and type/paste a full path. Scoped to only this project folder -
+    scanning the whole computer would be slow and would mean guessing at
+    files the app has no business touching.
 
     Skips: the `backups/` folder (our own timestamped copies, not a
     workbook to export into), `venv/`, `.git/`, and Excel's own temporary

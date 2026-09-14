@@ -70,7 +70,7 @@ def _diff_summary(existing_row: sqlite3.Row, pkg_dict: dict) -> Optional[str]:
             f"Nilai Kontrak berubah: {existing_row['nilai_kontrak_text']} -> {pkg_dict['nilai_kontrak_text']}"
         )
     if existing_row["nama_paket"] != pkg_dict["nama_paket"]:
-        changes.append("Nama paket berubah")
+        changes.append(f"Nama paket berubah: \"{existing_row['nama_paket']}\" -> \"{pkg_dict['nama_paket']}\"")
     return "; ".join(changes) if changes else None
 
 

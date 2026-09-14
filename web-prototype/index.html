@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalla Aspal - LPSE Monitor (web prototype - NOT USED)</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* Small extra styling just for this static prototype page itself -
+     NOT part of the real app's design system, so it's kept separate
+     from css/style.css (which is a straight copy of the real thing). */
+  body { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+  .scaffold-banner {
+    background: #FDECC8; border: 1px solid var(--kalla-gold-dark, #C98800);
+    border-radius: 8px; padding: 0.9rem 1.1rem; margin-bottom: 1.5rem;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: 0.9rem;
+  }
+  .fake-tab-row { display: flex; gap: 1.5rem; border-bottom: 1px solid var(--kalla-border, #E1E6E1); margin: 1rem 0; padding-bottom: 0.5rem; }
+  .fake-tab { font-weight: 600; color: var(--kalla-gray-muted, #6B7280); font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: 0.95rem; }
+  .fake-tab.active { color: var(--kalla-green, #00693C); }
+  .metrics-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+  .metric-box {
+    background-color: var(--kalla-bg-soft, #F5F7F5); border: 1px solid var(--kalla-border, #E1E6E1);
+    border-radius: 8px; padding: 0.6rem 0.8rem; border-top: 3px solid var(--kalla-gold, #F2A900);
+    flex: 1 1 180px; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+  .metric-label { color: var(--kalla-gray-muted, #6B7280); font-size: 0.85rem; }
+  .metric-value { color: var(--kalla-charcoal, #33383D); font-size: 1.6rem; font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="scaffold-banner">
+    <strong>This is a static, disconnected preview - not the real app.</strong>
+    Everything below is fake sample data with no buttons that work. See
+    <code>README.md</code> in this folder for what this is and isn't. The
+    real app is the Streamlit one you already run with <code>run_app.bat</code>.
+  </div>
+
+  <!-- ============================================================
+       HEADER + ROAD STRIP
+       Same markup/classes as branding.py's render_header() /
+       render_road_strip() in the real app.
+       ============================================================ -->
+  <div class="kalla-header">
+    <span class="kalla-wordmark">
+      <span class="kalla-k">K</span><span class="kalla-lla">ALLA</span><span class="kalla-aspal">ASPAL</span>
+    </span>
+    <span class="kalla-subtitle">LPSE Monitor</span>
+  </div>
+  <div class="kalla-road"></div>
+
+  <!-- ============================================================
+       METRICS ROW (fake numbers)
+       ============================================================ -->
+  <div class="metrics-row">
+    <div class="metric-box"><div class="metric-label">Terakhir Cek</div><div class="metric-value">-</div></div>
+    <div class="metric-box"><div class="metric-label">Wilayah Aktif</div><div class="metric-value">0</div></div>
+    <div class="metric-box"><div class="metric-label">Daftar Lengkap</div><div class="metric-value">0</div></div>
+    <div class="metric-box"><div class="metric-label">Ringkasan Beranda</div><div class="metric-value">0</div></div>
+  </div>
+
+  <!-- ============================================================
+       TAB ROW (visual only - clicking these does nothing here)
+       ============================================================ -->
+  <div class="fake-tab-row">
+    <span class="fake-tab active">Dashboard</span>
+    <span class="fake-tab">Cek Tender (Daftar Lengkap)</span>
+    <span class="fake-tab">Ringkasan Beranda</span>
+    <span class="fake-tab">Kata Kunci</span>
+    <span class="fake-tab">Excel</span>
+    <span class="fake-tab">Wilayah LPSE</span>
+  </div>
+
+  <h3>Aktivitas Terbaru (contoh)</h3>
+
+  <!-- ============================================================
+       SAMPLE ACTIVITY CARD - same markup as app.py's
+       render_activity_card(), filled with fake data.
+       ============================================================ -->
+  <div class="kalla-activity-card is-new">
+    <span class="kalla-activity-pill new">🆕 Baru</span>
+    <span class="kalla-activity-pill dataset">Daftar Lengkap</span>
+    <a class="kalla-activity-title" href="#" onclick="return false;">Peningkatan Jalan Contoh - Kecamatan Contoh</a>
+    <div class="kalla-activity-meta">Contoh Wilayah &middot; 14 September 2026</div>
+    <div class="kalla-activity-summary">Ini adalah contoh data statis, bukan data asli.</div>
+  </div>
+
+  <h3>Paket Relevan (contoh)</h3>
+
+  <!-- ============================================================
+       SAMPLE PACKAGE CARD - same markup as app.py's
+       render_package_card(), filled with fake data.
+       ============================================================ -->
+  <div class="kalla-pkg-card updated">
+    <a class="kalla-pkg-title" href="#" onclick="return false;">Rehabilitasi Jalan Contoh Tahap 2</a>
+    <div class="kalla-pkg-meta">
+      <span class="kalla-pkg-meta-item">📍 Wilayah: <b>Contoh Wilayah</b></span>
+      <span class="kalla-pkg-meta-item">🏗️ Status: <b>Tender</b></span>
+      <span class="kalla-pkg-meta-item">💰 HPS: <b>Rp 0</b></span>
+      <span class="kalla-pkg-meta-item">🕒 Diperbarui: <b>Contoh</b></span>
+    </div>
+    <div class="kalla-pkg-diff">Contoh perubahan: status berubah dari "Tender" menjadi "Masa Sanggah".</div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

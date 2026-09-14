@@ -49,29 +49,49 @@ expected to be fixable, not a dead end.
 1. Go to the **Wilayah LPSE** tab and add every LPSE region you want to
    monitor (name + region identifier, e.g. `singkawangkota` or
    `kalbarprov`). This only needs doing once per region - it's remembered.
+   Adding many regions at once? Open **Import Massal Wilayah** on that
+   same tab instead of the one-by-one form - paste a list of LPSE URLs
+   (or bare identifiers), or upload an exported browser bookmarks file
+   (Chrome/Edge/Firefox all export the same format: **chrome://bookmarks**
+   → ⋮ menu → **Export bookmarks**) and every LPSE link in it is picked up
+   automatically.
 2. Go to **Cek Tender (Daftar Lengkap)** and click **CEK TENDER** - this
    checks the full tender list (every status) for all active regions.
 3. Go to **Ringkasan Beranda** and click **CEK RINGKASAN BERANDA** - this
    checks each region's homepage summary, which additionally carries a
    registration deadline ("Akhir Pendaftaran"), shown on a built-in
    calendar further down the tab (hover a marked day for a quick list,
-   click it for full detail).
+   click a day for full detail - each package name shown is itself a
+   clickable link straight to its LPSE page).
 4. Either check will tell you **X PAKET BARU DITEMUKAN** (or "tidak ada
    paket baru") and list what's new/changed. Both keep a running,
    earliest-first table of everything relevant found so far - use the
    filter/sort controls above each table to narrow it down (e.g. only
    "Masa Sanggah") and see the HPS total recalculate for just that filter.
-5. Go to **Kata Kunci** to add/rename/enable/disable the keywords used to
+5. Go to **Dashboard** (the first tab) any time to see **Aktivitas
+   Terbaru** - a clean, card-based feed of every new/changed package
+   across BOTH datasets, newest first, including a warning badge when a
+   package's own name suggests it was canceled/failed/re-tendered (see
+   "Catatan" below).
+6. Go to **Kata Kunci** to add/rename/enable/disable the keywords used to
    decide what counts as "terkait jalan", any time.
-6. Go to **Excel** - it has its own sub-tab per dataset ("Daftar Lengkap"
+7. Go to **Excel** - it has its own sub-tab per dataset ("Daftar Lengkap"
    and "Ringkasan Beranda"), each exporting to its own configurable
    file/sheet/cell/columns, with automatic backup before every write. If
    you've already dropped an `.xlsx` file inside this project's folder,
    it'll show up as a one-click button instead of needing a typed path.
    Exports are written as a proper Excel Table (banded rows + filter
    dropdowns already on) by default.
-7. Run it again in the morning and at night, per your normal workflow -
+8. Run it again in the morning and at night, per your normal workflow -
    the database remembers everything between runs.
+
+**Catatan (nama paket berubah):** LPSE sometimes appends a status word
+straight into a package's own name later on - e.g. "... (Tender Gagal)" or
+"... (Diulang)". The app detects "gagal"/"batal"/"dibatalkan"/"diulang"/
+"gugur" in a package's name and shows a visible warning/badge for it (in
+the Dashboard feed, the per-check result cards, and a "Catatan" column on
+both saved-package tables) - see `services/status_flags.py`. This is a
+plain text check, not a guarantee; a human still makes the final call.
 
 ## Why two separate checks?
 
@@ -90,6 +110,22 @@ full technical reasoning:
 Double-click **`push_to_github.bat`** in this folder. It stages, commits
 (asking for an optional short message), and pushes everything in one go -
 no need to type git commands.
+
+## Customizing the look (colors, spacing, cards)
+
+All of the app's styling lives in one plain CSS file: `ui/style.css`. It's
+organized into numbered, commented sections (palette, header, buttons,
+tabs, metrics, cards, etc.) - open it, find the section for the thing you
+want to change, edit the value, save, then just refresh the app in your
+browser. No restart needed, no Python involved. The 10 color values at the
+very top of the file (`:root { --kalla-green: ...; }`) control the whole
+app's palette - change one there and it updates everywhere that color is
+used.
+
+Saved packages also get a small **"🆕 Baru"** marker in their table if
+they were added or updated in roughly the last 24 hours (controlled by
+`RECENT_WINDOW_HOURS` in `services/filter_service.py`, if you want that
+window longer or shorter).
 
 ## Using it on another device
 
@@ -160,7 +196,7 @@ anonymous HTTP GET + HTML parsing (no session needed at all).
 
 ```
 kalla-aspal/
-    app.py                          Streamlit UI (5 tabs)
+    app.py                          Streamlit UI (6 tabs)
     launcher.py                     Entry point used only by the .exe build
     lpse_monitor.spec               PyInstaller build spec
     requirements.txt
@@ -175,7 +211,7 @@ kalla-aspal/
         lpse_scraper.py               Full /lelang list - session + JSON API
         lpse_homepage_scraper.py      Homepage summary - plain HTML, no session
     database/
-        models.py                     SQL schema (9 tables)
+        models.py                     SQL schema (10 tables)
         database.py                   Connection + queries + schema migrations
     services/
         keyword_service.py            Keyword matching (shared by both scrapers)
@@ -184,11 +220,14 @@ kalla-aspal/
         filter_service.py             Dashboard filter/sort/HPS-sum helpers
         calendar_service.py           Akhir Pendaftaran calendar helpers
         excel_service.py              Excel export (Phase 6) - two datasets, Excel Tables, file discovery
+        status_flags.py               Detects "gagal"/"batal"/"diulang"/etc. inside a package's name
+        activity_service.py           Merges both datasets' change history for the Dashboard tab
     ui/
-        branding.py                    Kalla Aspal colors/CSS/header banner
+        branding.py                    Header banner + road-strip HTML, reads style.css for all CSS
+        style.css                      All colors/CSS in one plain file - edit this to change the look
     config/
         default_keywords.py           Seed keyword list (first run only)
-    tests/                            56 offline unit tests (see below)
+    tests/                            70 offline unit tests (see below)
 ```
 
 ## Running the tests

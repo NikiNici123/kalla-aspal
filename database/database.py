@@ -64,8 +64,8 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
 
 def _migrate_excel_config_table(conn: sqlite3.Connection) -> None:
     """One-time forward migration for databases created before Excel export
-    supported two separate datasets (2026-09-13 evening build used a
-    single `excel_config` row, id=1, for the Daftar Lengkap dataset only).
+    supported two separate datasets (an earlier build used a single
+    `excel_config` row, id=1, for the Daftar Lengkap dataset only).
 
     Safe to call every startup: it's a no-op once the table is already in
     the new (dataset TEXT PRIMARY KEY) shape, or if the table doesn't
@@ -374,6 +374,16 @@ def get_package_history(conn: sqlite3.Connection, package_key: str) -> list:
     ).fetchall()
 
 
+def get_recent_package_snapshots(conn: sqlite3.Connection, limit: int = 20) -> list:
+    """Most recent change events across EVERY Daftar Lengkap package (not
+    just one) - powers the "Aktivitas Terbaru" dashboard tab. Includes
+    "Pertama kali ditemukan" (new) and every tracked-field update, newest
+    first."""
+    return conn.execute(
+        "SELECT * FROM package_snapshots ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
 # ---------------------------------------------------------------------------
 # Scrape runs
 # ---------------------------------------------------------------------------
@@ -488,6 +498,40 @@ def touch_homepage_package_last_seen(conn: sqlite3.Connection, existing_row: sql
     )
 
 
+def insert_homepage_snapshot(
+    conn: sqlite3.Connection,
+    package_key: str,
+    scrape_run_id: Optional[int],
+    hps_value: Optional[float],
+    akhir_pendaftaran_at: Optional[str],
+    change_summary: str,
+    snapshot_json: dict,
+) -> None:
+    """Mirrors insert_snapshot() (Daftar Lengkap) - see
+    homepage_package_snapshots in models.py for why this exists as its own
+    table rather than reusing package_snapshots."""
+    conn.execute(
+        """
+        INSERT INTO homepage_package_snapshots
+            (package_key, scrape_run_id, hps_value, akhir_pendaftaran_at,
+             change_summary, snapshot_json, created_at)
+        VALUES (?,?,?,?,?,?,?)
+        """,
+        (
+            package_key, scrape_run_id, hps_value, akhir_pendaftaran_at,
+            change_summary, json.dumps(snapshot_json), _now(),
+        ),
+    )
+
+
+def get_recent_homepage_snapshots(conn: sqlite3.Connection, limit: int = 20) -> list:
+    """Same idea as get_recent_package_snapshots(), for the Ringkasan
+    Beranda dataset - powers the "Aktivitas Terbaru" dashboard tab."""
+    return conn.execute(
+        "SELECT * FROM homepage_package_snapshots ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
 def get_relevant_homepage_packages(conn: sqlite3.Connection, region_identifier: Optional[str] = None) -> list:
     if region_identifier:
         return conn.execute(
@@ -544,8 +588,7 @@ def get_last_completed_homepage_run(conn: sqlite3.Connection):
 
 def get_excel_config(conn: sqlite3.Connection, dataset: str):
     """`dataset` is 'lelang' (Daftar Lengkap) or 'beranda' (Ringkasan
-    Beranda) - the two datasets are configured and exported independently,
-    per Nikol's request to keep them separate."""
+    Beranda) - the two datasets are configured and exported independently."""
     return conn.execute("SELECT * FROM excel_config WHERE dataset = ?", (dataset,)).fetchone()
 
 

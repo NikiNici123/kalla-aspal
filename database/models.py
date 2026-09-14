@@ -1,21 +1,22 @@
 """
 SQLite schema for LPSE Monitor.
 
-Kept as plain SQL (rather than an ORM) to stay dependency-light for v1,
-per the "avoid unnecessary complexity" rule in the project brief. If the
+Kept as plain SQL rather than an ORM, to stay dependency-light. If the
 app grows, this is the natural place to introduce SQLAlchemy models later
 without changing how the rest of the app calls into database.py.
 
 Tables:
     regions            - LPSE regions the user monitors (add/edit/activate in the app)
-    keywords           - road-related keyword list (Phase 5 manages these)
+    keywords           - road-related keyword list
     packages           - latest known state of every /lelang package we've ever seen
     package_snapshots  - history of changes to a package over time
     scrape_runs        - a log entry for every time "Cek Tender" (full list) was run
     homepage_packages  - latest known state of every homepage-summary package seen
-                         (kept DELIBERATELY SEPARATE from `packages` - see
+                         (kept separate from `packages` - see
                          scraper/lpse_homepage_scraper.py docstring for why)
     homepage_scrape_runs - a log entry for every homepage-summary check run
+    homepage_package_snapshots - history of changes to a homepage package
+                         over time (mirrors package_snapshots)
     excel_config       - current Excel export settings, one row per dataset
                          ('lelang' / 'beranda')
     excel_generated_rows - which (file, sheet, row) triples this app wrote,
@@ -160,11 +161,33 @@ CREATE TABLE IF NOT EXISTS homepage_scrape_runs (
     error_message               TEXT
 );
 
+-- Change history for `homepage_packages` - mirrors `package_snapshots`
+-- exactly (same columns/purpose), added so the "Aktivitas Terbaru"
+-- dashboard tab has a real persisted feed for THIS dataset too, not just
+-- whatever happens to still be in Streamlit's session state from the
+-- last click. Kept as its own table (not merged into package_snapshots)
+-- for the same reason `homepage_packages` is its own table - see above.
+CREATE TABLE IF NOT EXISTS homepage_package_snapshots (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    package_key             TEXT NOT NULL,  -- package_id or fingerprint
+    scrape_run_id           INTEGER,
+    hps_value               REAL,
+    akhir_pendaftaran_at    TEXT,
+    change_summary          TEXT NOT NULL,
+    snapshot_json           TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    FOREIGN KEY (scrape_run_id) REFERENCES homepage_scrape_runs(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_homepage_snapshots_package_key ON homepage_package_snapshots(package_key);
+CREATE INDEX IF NOT EXISTS idx_homepage_snapshots_created_at ON homepage_package_snapshots(created_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_created_at ON package_snapshots(created_at);
+
 -- Excel export settings - ONE row per dataset ('lelang' = Daftar Lengkap,
--- 'beranda' = Ringkasan Beranda), since Nikol asked for the two datasets
--- to export separately rather than sharing one config. Kept in the
--- database (not a config file) so it survives app restarts and is easy to
--- change from the UI. See services/excel_service.py for how this is used.
+-- 'beranda' = Ringkasan Beranda), so the two datasets export separately
+-- instead of sharing one config. Kept in the database (not a config
+-- file) so it survives app restarts and is easy to change from the UI.
+-- See services/excel_service.py for how this is used.
 --
 -- NOTE: this replaced an earlier single-row (id=1) shape. Existing
 -- databases are migrated automatically the first time this version of the

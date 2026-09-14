@@ -5,10 +5,10 @@ scraper/lpse_homepage_scraper.py and database/models.py for why these two
 datasets are kept separate end-to-end (separate scraper, separate tables,
 separate service, separate UI tab).
 
-This one is intentionally a bit simpler: no per-field change-history log
-(package_snapshots has no homepage equivalent yet) - just new / existing /
-updated counts, since the main point of this dataset is the registration
-deadline, not tracking every field change over time.
+Like comparison_service, every new/updated package is also logged to
+`homepage_package_snapshots` (via db.insert_homepage_snapshot) so the
+"Aktivitas Terbaru" dashboard tab has a real persisted change feed for
+this dataset too, not just whatever's still in Streamlit's session state.
 """
 
 from __future__ import annotations
@@ -51,6 +51,14 @@ class HomepageScrapeSummary:
         return sum(r.relevant_found for r in self.region_results)
 
 
+def _row_key(row_or_dict) -> str:
+    """The identifier used to match a package across scrapes: package_id
+    when present, otherwise the fallback fingerprint. Mirrors
+    comparison_service._row_key exactly."""
+    package_id = row_or_dict["package_id"] if row_or_dict["package_id"] else None
+    return package_id or row_or_dict["fingerprint"]
+
+
 def _diff_summary(existing_row: sqlite3.Row, pkg_dict: dict) -> Optional[str]:
     changes = []
     if existing_row["section"] != pkg_dict["section"]:
@@ -65,7 +73,7 @@ def _diff_summary(existing_row: sqlite3.Row, pkg_dict: dict) -> Optional[str]:
             f"{pkg_dict['akhir_pendaftaran_text']}"
         )
     if existing_row["nama_paket"] != pkg_dict["nama_paket"]:
-        changes.append("Nama paket berubah")
+        changes.append(f"Nama paket berubah: \"{existing_row['nama_paket']}\" -> \"{pkg_dict['nama_paket']}\"")
     return "; ".join(changes) if changes else None
 
 
@@ -100,11 +108,21 @@ def run_homepage_scrape_and_compare(conn: sqlite3.Connection, region_identifiers
 
                 if existing_row is None:
                     db.insert_homepage_package(conn, pkg_dict)
+                    key = pkg.package_id or pkg.fingerprint
+                    db.insert_homepage_snapshot(
+                        conn, key, run_id, pkg_dict["hps_value"], pkg_dict["akhir_pendaftaran_at"],
+                        "Pertama kali ditemukan", pkg_dict,
+                    )
                     summary.new_packages.append(pkg_dict)
                 else:
+                    key = _row_key(existing_row)
                     diff = _diff_summary(existing_row, pkg_dict)
                     if diff:
                         db.update_homepage_package(conn, existing_row, pkg_dict)
+                        db.insert_homepage_snapshot(
+                            conn, key, run_id, pkg_dict["hps_value"], pkg_dict["akhir_pendaftaran_at"],
+                            diff, pkg_dict,
+                        )
                         pkg_dict["_change_summary"] = diff
                         summary.updated_packages.append(pkg_dict)
                     else:

@@ -1,129 +1,71 @@
 """
 Kalla Aspal visual identity for the Streamlit app.
 
-Colors are taken from the KALLA ASPAL wordmark (a gold "K" + deep green
-"ALLA" + charcoal "ASPAL"), turned into a small, deliberate palette rather
-than Streamlit's generic defaults - a handful of named tokens used
-consistently everywhere (header, buttons, tabs, metrics, dividers) instead
-of scattered one-off colors.
+Colors come from the real KALLA ASPAL wordmark (gold "K" + green "ALLA" +
+charcoal "ASPAL"), used as a small set of named tokens everywhere - header,
+buttons, tabs, metrics, dividers - instead of one-off colors scattered
+around.
 
-Two things get applied once, near the top of app.py:
+Three things get applied once, near the top of app.py:
   - `PAGE_CONFIG_KWARGS` -> passed to st.set_page_config()
-  - `inject_css()` -> a single st.markdown(..., unsafe_allow_html=True)
-    call that styles buttons/tabs/metrics/dividers app-wide, PLUS a
-    narrow, deliberately scoped rule (see CALENDAR_CONTAINER_KEY) that
-    only shrinks the Ringkasan Beranda calendar - nothing else.
-  - `render_header()` -> replaces the plain st.title() with a small
-    banner that echoes the real wordmark's colors.
+  - `inject_css()` -> loads ui/style.css and injects it, styling buttons,
+    tabs, metrics, dividers, headers, and the card system used by both
+    the Dashboard feed and the scrape-result package cards
+    (`.kalla-activity-*` / `.kalla-pkg-*`), plus a narrow rule (see
+    CALENDAR_CONTAINER_KEY) that shrinks only the Ringkasan Beranda
+    calendar.
+  - `render_header()` -> a small banner in place of st.title(), using the
+    real wordmark's colors.
+  - `render_road_strip()` -> the gold dashed line under the header, meant
+    to read like a road marking from above (Kalla Aspal builds roads).
 
-Kept in its own module (rather than inlined in app.py) so the "look" of
-the app is a single, easy-to-find place to tweak later - change a hex
-value here and it updates everywhere at once.
+Kept in its own module rather than inlined in app.py so the app's look is
+one easy-to-find place.
+
+The CSS itself used to live here as an inline Python f-string - it now
+lives in `ui/style.css`, a plain file you can open and edit directly
+(change a color, save, refresh the browser) without touching Python.
+`inject_css()` just reads that file and injects it. **To change how the
+app looks - colors, spacing, card style - edit `ui/style.css`, not this
+file.** This module only keeps `render_header()`/`render_road_strip()`
+(small HTML snippets) and `CALENDAR_CONTAINER_KEY`, which has to match
+the `.st-key-kalla_calendar` selector over in style.css.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import streamlit as st
 
-# --- Palette -----------------------------------------------------------
-# Named, not scattered: every color used anywhere in the app's custom CSS
-# traces back to one of these.
-GREEN = "#00693C"
-GREEN_DARK = "#004F2C"
-GREEN_TINT = "#E7F2EC"       # pale green, for subtle backgrounds/hovers
-GOLD = "#F2A900"
-GOLD_DARK = "#C98800"
-CHARCOAL = "#33383D"
-GRAY_MUTED = "#6B7280"
-BORDER = "#E1E6E1"
-BG = "#FFFFFF"
-BG_SOFT = "#F5F7F5"
+# Path to the CSS file inject_css() reads - sits next to this module.
+_STYLE_CSS_PATH = Path(__file__).parent / "style.css"
 
 PAGE_CONFIG_KWARGS = dict(page_title="Kalla Aspal - LPSE Monitor", page_icon="\U0001F6E3", layout="wide")
 
-# A stable key for st.container(key=...) around the deadline calendar, so
-# the CSS below can shrink ONLY that calendar's buttons/spacing without
-# touching buttons anywhere else in the app. Streamlit turns this key into
-# a `st-key-{value}` CSS class on the container's own wrapper element.
+# Key for st.container(key=...) around the deadline calendar, so the CSS
+# can shrink just that calendar's buttons/spacing without touching
+# buttons anywhere else. Streamlit turns this into a `st-key-{value}`
+# class on the container's wrapper element.
 CALENDAR_CONTAINER_KEY = "kalla_calendar"
 
 
 def inject_css() -> None:
-    st.markdown(
-        f"""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
-        .stApp {{
-            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-            background-color: {BG};
-        }}
-
-        /* --- Header banner (see render_header) --- */
-        .kalla-header {{
-            display: flex; align-items: baseline; gap: 0.6rem;
-            padding-bottom: 0.35rem; margin-bottom: 0.25rem;
-            border-bottom: 3px solid {GOLD};
-        }}
-        .kalla-header .kalla-wordmark {{ font-size: 1.9rem; font-weight: 700; letter-spacing: 0.01em; }}
-        .kalla-header .kalla-k {{ color: {GOLD}; }}
-        .kalla-header .kalla-lla {{ color: {GREEN}; }}
-        .kalla-header .kalla-aspal {{ color: {CHARCOAL}; margin-left: 0.15rem; }}
-        .kalla-header .kalla-subtitle {{
-            font-size: 0.95rem; color: {GRAY_MUTED}; font-weight: 400;
-        }}
-
-        /* --- Buttons --- */
-        div[data-testid="stButton"] button {{
-            border-radius: 6px; border: 1px solid {BORDER}; transition: all 0.1s ease-in;
-        }}
-        div[data-testid="stButton"] button[kind="primary"] {{
-            background-color: {GREEN}; border-color: {GREEN};
-        }}
-        div[data-testid="stButton"] button[kind="primary"]:hover {{
-            background-color: {GREEN_DARK}; border-color: {GREEN_DARK};
-        }}
-        div[data-testid="stButton"] button[kind="secondary"]:hover {{
-            border-color: {GOLD}; color: {GOLD_DARK};
-        }}
-
-        /* --- Tabs --- */
-        button[data-baseweb="tab"] {{ font-weight: 600; color: {GRAY_MUTED}; }}
-        button[data-baseweb="tab"][aria-selected="true"] {{ color: {GREEN}; }}
-        div[data-baseweb="tab-highlight"] {{ background-color: {GOLD} !important; }}
-
-        /* --- Metrics --- */
-        div[data-testid="stMetric"] {{
-            background-color: {BG_SOFT}; border: 1px solid {BORDER}; border-radius: 8px;
-            padding: 0.6rem 0.8rem; border-top: 3px solid {GOLD};
-        }}
-        div[data-testid="stMetricLabel"] {{ color: {GRAY_MUTED}; }}
-        div[data-testid="stMetricValue"] {{ color: {CHARCOAL}; }}
-
-        /* --- Dividers: a slim green-to-gold line instead of a plain rule --- */
-        div[data-testid="stMarkdownContainer"] hr {{
-            height: 3px; border: none; border-radius: 2px;
-            background: linear-gradient(90deg, {GREEN} 0%, {GOLD} 100%);
-        }}
-
-        /* --- Deadline calendar (Ringkasan Beranda): smaller footprint --- */
-        .st-key-{CALENDAR_CONTAINER_KEY} div[data-testid="stButton"] button {{
-            font-size: 0.72rem !important; min-height: 1.9rem !important;
-            padding: 0.1rem 0 !important; line-height: 1.1 !important;
-        }}
-        .st-key-{CALENDAR_CONTAINER_KEY} div[data-testid="column"] {{ padding: 0 2px !important; }}
-        .st-key-{CALENDAR_CONTAINER_KEY} h4, .st-key-{CALENDAR_CONTAINER_KEY} h6 {{ margin: 0.2rem 0 !important; }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Read ui/style.css and inject it. Reads the file fresh every call
+    instead of caching it, so a hand-edit shows up on the next rerun (just
+    refresh the browser) without restarting the app. Warns instead of
+    crashing if the file is somehow missing."""
+    try:
+        css_text = _STYLE_CSS_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        st.warning(f"Style file not found: {_STYLE_CSS_PATH} - app will use default Streamlit styling.")
+        return
+    st.markdown(f"<style>\n{css_text}\n</style>", unsafe_allow_html=True)
 
 
 def render_header(subtitle: str = "LPSE Monitor") -> None:
-    """Small banner echoing the real KALLA ASPAL wordmark's colors, in
-    place of a plain st.title(). Plain text, no external image - keeps the
-    app self-contained (no logo file to lose track of) while still looking
-    like it belongs to Kalla Aspal."""
+    """Small banner in the real KALLA ASPAL wordmark's colors, in place of
+    a plain st.title(). Plain text, no image file to keep track of."""
     st.markdown(
         f"""
         <div class="kalla-header">
@@ -135,3 +77,11 @@ def render_header(subtitle: str = "LPSE Monitor") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_road_strip() -> None:
+    """The dashed gold line under the header - a dark band with a dashed
+    center line, like a road marking. Shown once, right under the header;
+    not reused as every divider (see .kalla-road / the plain hr rule in
+    style.css) so it stays an accent instead of wallpaper."""
+    st.markdown('<div class="kalla-road"></div>', unsafe_allow_html=True)

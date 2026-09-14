@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from services import filter_service
 
 
@@ -52,3 +54,25 @@ def test_sort_rows_by_hps_highest_first():
     sorted_rows = filter_service.sort_rows(ROWS, "HPS Tertinggi")
     values = [r["hps_value"] for r in sorted_rows if r["hps_value"] is not None]
     assert values == sorted(values, reverse=True)
+
+
+def test_is_recent_true_for_timestamp_within_window():
+    one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    assert filter_service.is_recent(one_hour_ago) is True
+
+
+def test_is_recent_false_for_timestamp_outside_window():
+    three_days_ago = (datetime.now() - timedelta(days=3)).isoformat(timespec="seconds")
+    assert filter_service.is_recent(three_days_ago) is False
+
+
+def test_is_recent_respects_custom_hours():
+    ten_hours_ago = (datetime.now() - timedelta(hours=10)).isoformat(timespec="seconds")
+    assert filter_service.is_recent(ten_hours_ago, hours=24) is True
+    assert filter_service.is_recent(ten_hours_ago, hours=5) is False
+
+
+def test_is_recent_handles_missing_or_malformed_timestamps():
+    assert filter_service.is_recent(None) is False
+    assert filter_service.is_recent("") is False
+    assert filter_service.is_recent("not-a-date") is False

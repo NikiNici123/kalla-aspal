@@ -1,16 +1,14 @@
 """
-Calendar helpers for the "Ringkasan Beranda" tab (Phase 3 polish).
+Calendar helpers for the "Ringkasan Beranda" tab.
 
-Nikol asked for a built-in, always-up-to-date calendar that marks each
-Akhir Pendaftaran (registration deadline) date, without cluttering the
-screen - so a day just gets a small marker, and the packages due that day
-only show up on hover/click. This module does the date math (which package
-falls on which day, building a month grid) using only the Python standard
-library `calendar`/`datetime` - deliberately NOT a third-party Streamlit
-calendar component, since none of those could be verified/tested in the
-assistant's offline sandbox (see PROJECT_STATUS.md). `app.py` renders the
-grid this returns as a plain table of buttons, which keeps it "built in"
-and dependency-free.
+Marks each Akhir Pendaftaran (registration deadline) date on a small,
+built-in calendar without cluttering the screen - a day just gets a
+small marker, and the packages due that day show up on hover/click.
+This module does the date math (which package falls on which day,
+building a month grid) using only the standard library's `calendar`/
+`datetime` - not a third-party Streamlit calendar widget, so there's no
+extra dependency to install or keep working. `app.py` renders the grid
+this returns as a plain table of buttons.
 """
 
 from __future__ import annotations

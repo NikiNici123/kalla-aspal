@@ -1,0 +1,341 @@
+/*
+  Kalla Aspal - LPSE Monitor: app-wide styling.
+
+  This is a PLAIN CSS FILE (it used to live inline inside branding.py as a
+  Python string) specifically so it's easy to open and edit directly - no
+  Python syntax to fight with, no need to double up every { and } like an
+  f-string requires. Change a value below, save, and refresh the app in
+  your browser (Streamlit re-reads this file on every rerun) to see it -
+  no restart needed.
+
+  HOW TO READ THIS FILE, IF YOU'RE NEW TO CSS:
+    selector { property: value; }
+  "selector" says WHAT part of the page this rule targets (a button, a
+  card, some text). "property" says WHAT ASPECT of it changes (its color,
+  its size, its spacing). "value" is the actual number or color. Every
+  rule below has a comment right next to it (or right above a group of
+  them) in plain language saying what it visually does - you should never
+  have to guess what a line is for.
+
+  A few CSS units you'll see everywhere below:
+    px   = pixels, an exact size (1px is a hairline).
+    rem  = "the base text size" - 1rem ≈ 16px, 0.5rem ≈ half that. Using
+           rem instead of px for spacing means it scales sensibly if the
+           browser's zoom/font-size setting changes.
+    #RRGGBB = a hex color code (see the palette in section 1 - you almost
+           never need to type a raw hex code below section 1, just use a
+           var(--kalla-...) name instead).
+
+  ----------------------------------------------------------------------
+  HOW THIS FILE IS ORGANIZED
+  ----------------------------------------------------------------------
+  1. COLOR PALETTE (below)      - change the whole app's look from here
+  2. BASE / FONT
+  3. HEADER BANNER + ROAD STRIP - the "KALLA ASPAL" title and the gold
+                                   dashed line under it
+  4. BUTTONS
+  5. TABS
+  6. METRICS (the 4 number boxes at the top of the app)
+  7. DIVIDERS + SECTION HEADERS
+  8. DEADLINE CALENDAR           - Ringkasan Beranda tab only
+  9. ACTIVITY CARDS              - the Dashboard tab's "Aktivitas Terbaru" feed
+  10. PACKAGE CARDS              - "Paket Baru" / "Paket Diperbarui" cards
+                                   shown right after clicking a check button
+  11. "BARU" BADGE                - the new/updated marker on saved tables
+
+  Each section below is applied to a specific, labeled part of the app - if
+  you want to change how something looks, find the matching HTML comment
+  here (e.g. "PACKAGE CARDS") rather than guessing. If you're not sure
+  which section controls something you see on screen, right-click it in
+  the browser -> "Inspect" -> the class name shown there (like
+  "kalla-pkg-card") is the same name used as a heading comment below.
+*/
+
+/* ======================================================================
+   1. COLOR PALETTE
+   Every color used anywhere below is one of these 10 named variables -
+   change a value here and it updates EVERYWHERE that color is used, all
+   at once, instead of hunting through the whole file for one hex code.
+   Taken from the real KALLA ASPAL wordmark: a gold "K", deep green
+   "ALLA", charcoal "ASPAL". If you want to try a totally different look,
+   this is the only section you need to touch.
+   ====================================================================== */
+:root {
+    --kalla-green: #00693C;         /* main brand green - primary buttons, links, active tab text */
+    --kalla-green-dark: #004F2C;    /* a darker green - only used when you hover over green things */
+    --kalla-green-tint: #E7F2EC;    /* a very pale green - used as a soft background behind small "Baru" pills */
+    --kalla-gold: #F2A900;          /* main brand gold - the road-strip line, section-header ticks, top of metric boxes */
+    --kalla-gold-dark: #C98800;     /* a darker gold - used for text sitting on top of a gold/cream background */
+    --kalla-charcoal: #33383D;      /* near-black - all the main, high-contrast reading text */
+    --kalla-gray-muted: #6B7280;    /* medium gray - secondary text: dates, labels, captions, meta info */
+    --kalla-border: #E1E6E1;        /* very light gray-green - every hairline border/divider in the app */
+    --kalla-bg: #FFFFFF;            /* plain white - the page background and every card's background */
+    --kalla-bg-soft: #F5F7F5;       /* off-white - a slightly tinted background, used behind metric boxes and pills */
+}
+
+/* ======================================================================
+   2. BASE / FONT
+   Sets the typeface for the whole app and the page's base background
+   color. "Inter" is a clean, modern sans-serif font pulled from Google
+   Fonts online; if there's ever no internet connection, the browser
+   falls back to "Segoe UI" (Windows' own default font) automatically.
+   ====================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+.stApp {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; /* the font used everywhere in the app */
+    background-color: var(--kalla-bg); /* the page's overall background color */
+}
+
+/* ======================================================================
+   3. HEADER BANNER + ROAD STRIP
+   The "KALLA ASPAL" title text (render_header() in branding.py) and the
+   dashed gold line under it (render_road_strip()) - the app's one
+   deliberate signature visual, styled to look like a road marking seen
+   from above, since Kalla Aspal is an asphalt/road-construction company.
+   This road motif is used ONCE, right here - it's not repeated as every
+   divider further down the page, so it stays a considered accent instead
+   of wallpaper.
+   ====================================================================== */
+.kalla-header {
+    display: flex;              /* lines up the title and subtitle side-by-side instead of stacked */
+    align-items: baseline;      /* aligns their text baselines, so the smaller subtitle text sits nicely next to the big title */
+    gap: 0.6rem;                 /* the space between the title and the subtitle */
+    padding-bottom: 0.6rem;      /* space below the whole header, before the road strip starts */
+    margin-bottom: 0;
+}
+.kalla-header .kalla-wordmark { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.01em; } /* the big "KALLAASPAL" text size/boldness/letter-spacing */
+.kalla-header .kalla-k { color: var(--kalla-gold); }        /* the "K" in KALLA - gold, matching the real wordmark */
+.kalla-header .kalla-lla { color: var(--kalla-green); }     /* the "ALLA" in KALLA - green, matching the real wordmark */
+.kalla-header .kalla-aspal { color: var(--kalla-charcoal); margin-left: 0.15rem; } /* the "ASPAL" text - dark, with a small gap after "KALLA" */
+.kalla-header .kalla-subtitle {
+    font-size: 0.95rem;             /* smaller than the title */
+    color: var(--kalla-gray-muted); /* muted gray so it doesn't compete with the title */
+    font-weight: 400;               /* normal weight, not bold */
+}
+
+.kalla-road {
+    height: 10px;                /* how tall/thick the road-strip band is */
+    border-radius: 3px;          /* slightly rounded corners on the band */
+    margin-bottom: 1.1rem;       /* space below the road strip, before the rest of the page content starts */
+    background-color: var(--kalla-charcoal); /* the dark "asphalt" color of the band */
+    /* This draws the repeating gold dashes on top of the charcoal band -
+       it's a striped pattern, not individual images. To make the dashes
+       longer/shorter or change the gap between them, adjust the pixel
+       numbers below (22px = dash length, the gap between 22px and 40px
+       = the space between dashes). */
+    background-image: repeating-linear-gradient(
+        90deg, var(--kalla-gold) 0px, var(--kalla-gold) 22px, transparent 22px, transparent 40px
+    );
+    background-position: 0 center;
+    background-repeat: repeat-x; /* repeats the dash pattern horizontally across the full width */
+    background-size: 40px 3px;   /* how thick each individual dash line is */
+}
+
+/* ======================================================================
+   4. BUTTONS
+   Streamlit renders every st.button() as <div data-testid="stButton"><button>.
+   "kind=primary" is a button created with type="primary" in Python (the
+   big colored action buttons like "CEK TENDER"); everything else is
+   "kind=secondary" (the default gray outline buttons, e.g. "Import
+   Wilayah Terpilih" is primary, most others are secondary).
+   ====================================================================== */
+div[data-testid="stButton"] button {
+    border-radius: 6px;                     /* rounded corners on every button */
+    border: 1px solid var(--kalla-border);  /* the default thin outline every button has */
+    transition: all 0.1s ease-in;           /* makes color changes (like hover) fade smoothly instead of snapping */
+}
+div[data-testid="stButton"] button[kind="primary"] {
+    background-color: var(--kalla-green);  /* fill color of a "primary" button (the main action buttons) */
+    border-color: var(--kalla-green);       /* its outline matches the fill */
+}
+div[data-testid="stButton"] button[kind="primary"]:hover {
+    background-color: var(--kalla-green-dark); /* darker green when you hover over a primary button */
+    border-color: var(--kalla-green-dark);
+}
+div[data-testid="stButton"] button[kind="secondary"]:hover {
+    border-color: var(--kalla-gold);    /* outline turns gold when you hover over a regular (secondary) button */
+    color: var(--kalla-gold-dark);       /* its text also turns gold */
+}
+
+/* ======================================================================
+   5. TABS
+   The row of tabs at the top (Dashboard / Cek Tender / Ringkasan Beranda
+   / Kata Kunci / Excel / Wilayah LPSE), and the Excel tab's two sub-tabs.
+   ====================================================================== */
+button[data-baseweb="tab"] { font-weight: 600; color: var(--kalla-gray-muted); } /* every tab label: bold, muted gray by default */
+button[data-baseweb="tab"][aria-selected="true"] { color: var(--kalla-green); }  /* the CURRENTLY OPEN tab's label turns green */
+div[data-baseweb="tab-highlight"] { background-color: var(--kalla-gold) !important; } /* the little colored underline that slides to the open tab */
+
+/* ======================================================================
+   6. METRICS
+   The 4 number boxes at the very top of the app (Terakhir Cek / Wilayah
+   Aktif / Daftar Lengkap / Ringkasan Beranda), and the 2 "Jumlah Paket" /
+   "Total HPS" boxes that appear above each saved-package table.
+   ====================================================================== */
+div[data-testid="stMetric"] {
+    background-color: var(--kalla-bg-soft);  /* the box's light background fill */
+    border: 1px solid var(--kalla-border);    /* thin outline around the box */
+    border-radius: 8px;                        /* rounded corners */
+    padding: 0.6rem 0.8rem;                     /* inner spacing between the box's edge and its text */
+    border-top: 3px solid var(--kalla-gold);   /* the gold accent stripe along the TOP edge only */
+}
+div[data-testid="stMetricLabel"] { color: var(--kalla-gray-muted); } /* the small label text, e.g. "Wilayah Aktif" */
+div[data-testid="stMetricValue"] { color: var(--kalla-charcoal); }   /* the big number itself */
+
+/* ======================================================================
+   7. DIVIDERS + SECTION HEADERS
+   `hr` = every st.divider(). Kept as a plain, quiet line on purpose - see
+   the road-strip comment above for why the bold motif isn't reused here.
+   `h3` = every st.subheader() AND every "### " markdown heading - gets a
+   small gold tick on the left so a tab reads as distinct sections while
+   scrolling, instead of one undifferentiated column of text.
+   ====================================================================== */
+div[data-testid="stMarkdownContainer"] hr {
+    border: none;                             /* removes the browser's default thick divider line */
+    border-top: 1px solid var(--kalla-border); /* replaces it with a plain thin one */
+    margin: 1.1rem 0;                           /* space above and below the divider */
+}
+h3 {
+    border-left: 4px solid var(--kalla-gold); /* the small gold vertical tick to the left of every section heading */
+    padding-left: 0.6rem;                       /* space between that tick and the heading text */
+}
+
+/* ======================================================================
+   8. DEADLINE CALENDAR (Ringkasan Beranda tab only)
+   Scoped to `.st-key-kalla_calendar` - the CSS class Streamlit generates
+   for the st.container(key="kalla_calendar") wrapping the calendar in
+   app.py (see branding.CALENDAR_CONTAINER_KEY). If you ever rename that
+   Python constant, update the class name below to match. This whole
+   section exists just to make the calendar's day-buttons smaller/denser
+   than normal buttons elsewhere in the app - without it they'd take up
+   too much space for a 7-column calendar grid.
+   ====================================================================== */
+.st-key-kalla_calendar div[data-testid="stButton"] button {
+    font-size: 0.72rem !important;    /* smaller text inside each day-number button */
+    min-height: 1.9rem !important;    /* shorter button height */
+    padding: 0.1rem 0 !important;     /* less inner spacing, so the button hugs the small text */
+    line-height: 1.1 !important;
+}
+.st-key-kalla_calendar div[data-testid="column"] { padding: 0 2px !important; } /* tighter gap between calendar day columns */
+.st-key-kalla_calendar h4, .st-key-kalla_calendar h6 { margin: 0.2rem 0 !important; } /* less space around the month/weekday headings inside the calendar */
+
+/* ======================================================================
+   9. ACTIVITY CARDS
+   The Dashboard tab's "Aktivitas Terbaru" feed - one card per recent
+   change, rendered by render_activity_card() in app.py. Clean/minimal:
+   white surface, a hairline border instead of a shadow, a thin colored
+   left edge that says whether a card is a brand-new package (green) or
+   an update to an existing one (gold).
+   ====================================================================== */
+.kalla-activity-card {
+    background-color: var(--kalla-bg);        /* card's white background */
+    border: 1px solid var(--kalla-border);      /* thin outline around the whole card */
+    border-radius: 8px;                          /* rounded card corners */
+    padding: 0.85rem 1rem;                        /* inner spacing between the card's edge and its content */
+    margin-bottom: 0.6rem;                        /* gap between one card and the next */
+    border-left: 3px solid var(--kalla-border);  /* the colored accent strip on the card's left edge (default gray) */
+}
+.kalla-activity-card.is-new { border-left-color: var(--kalla-green); }     /* left edge turns GREEN for a brand-new package */
+.kalla-activity-card.is-updated { border-left-color: var(--kalla-gold); }  /* left edge turns GOLD for an updated (not new) package */
+.kalla-activity-title {
+    font-weight: 600;                 /* bold package name */
+    color: var(--kalla-charcoal);
+    font-size: 0.98rem;
+    text-decoration: none;            /* no underline by default, even though it's a clickable link */
+}
+.kalla-activity-title:hover { color: var(--kalla-green); text-decoration: underline; } /* turns green + underlines on hover, showing it's clickable */
+.kalla-activity-meta {
+    color: var(--kalla-gray-muted);   /* the small line under the title (wilayah, date, etc.) */
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
+}
+.kalla-activity-summary {
+    color: var(--kalla-gray-muted);   /* the "what changed" description text */
+    font-size: 0.85rem;
+    margin-top: 0.35rem;
+    line-height: 1.4;                  /* extra line spacing so multi-line descriptions stay easy to read */
+}
+/* Small rounded "pill" labels used inside activity cards (dataset name,
+   "Baru", status-flag warnings like "Kemungkinan Tender Gagal"). */
+.kalla-activity-pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.1rem 0.5rem;     /* inner spacing that gives the pill its rounded-badge shape */
+    border-radius: 999px;       /* a very large radius = fully rounded/pill-shaped, not just rounded corners */
+    margin-right: 0.3rem;       /* gap before the next pill, when there's more than one */
+}
+.kalla-activity-pill.new { background-color: var(--kalla-green-tint); color: var(--kalla-green-dark); }   /* the "Baru" pill's colors */
+.kalla-activity-pill.dataset { background-color: var(--kalla-bg-soft); color: var(--kalla-gray-muted); }  /* the dataset-name pill's colors (neutral) */
+.kalla-activity-pill.flag { background-color: #FDECC8; color: var(--kalla-gold-dark); }                     /* the warning-flag pill's colors (soft amber - not a palette variable since it's only used here) */
+.kalla-activity-empty {
+    color: var(--kalla-gray-muted);  /* the "no recent activity" placeholder message */
+    font-size: 0.9rem;
+    padding: 1.5rem 0;
+    text-align: center;
+}
+
+/* ======================================================================
+   10. PACKAGE CARDS
+   "Paket Baru" / "Paket Diperbarui" cards shown right after clicking a
+   check button, in both the Daftar Lengkap and Ringkasan Beranda tabs -
+   rendered by render_package_card() in app.py. Same visual family as the
+   activity cards above (same border/radius/accent language) so a package
+   looks like "the same kind of thing" wherever it's shown.
+   ====================================================================== */
+.kalla-pkg-card {
+    background-color: var(--kalla-bg);
+    border: 1px solid var(--kalla-border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;                       /* slightly roomier than activity cards - these carry more info per card */
+    margin-bottom: 0.7rem;
+    border-left: 3px solid var(--kalla-border);  /* accent strip, same idea as activity cards below */
+    transition: border-color 0.12s ease-in, box-shadow 0.12s ease-in; /* smooth fade for the hover shadow effect below */
+}
+.kalla-pkg-card:hover { box-shadow: 0 1px 6px rgba(0,0,0,0.06); } /* a very soft shadow that appears when you hover over a card, for a subtle "lift" */
+.kalla-pkg-card.new { border-left-color: var(--kalla-green); }     /* GREEN left edge = brand-new package */
+.kalla-pkg-card.updated { border-left-color: var(--kalla-gold); }  /* GOLD left edge = existing package that changed */
+.kalla-pkg-title {
+    font-weight: 600;
+    color: var(--kalla-charcoal);
+    font-size: 1rem;
+    text-decoration: none;
+    display: block;              /* makes the whole title line clickable, not just the text itself */
+    margin-bottom: 0.5rem;       /* gap below the title, before the meta-info row starts */
+}
+.kalla-pkg-title:hover { color: var(--kalla-green); text-decoration: underline; }
+/* The icon+label row (📍 Wilayah, 🏗️ Status, 💰 HPS, ...) - flex-wrap so
+   it reflows onto multiple lines on a narrow window instead of overflowing. */
+.kalla-pkg-meta {
+    display: flex;
+    flex-wrap: wrap;             /* lets items drop to a new line instead of getting cut off on a narrow screen */
+    gap: 0.35rem 1.1rem;          /* vertical gap between wrapped lines, horizontal gap between items on the same line */
+}
+.kalla-pkg-meta-item {
+    font-size: 0.83rem;
+    color: var(--kalla-gray-muted);  /* the label part of each meta item (e.g. "Wilayah:") */
+    white-space: nowrap;              /* keeps one meta item (icon + label + value) from breaking mid-way onto two lines */
+}
+.kalla-pkg-meta-item b { color: var(--kalla-charcoal); font-weight: 600; } /* the VALUE part of each meta item (e.g. the actual wilayah name) - darker/bolder than the label */
+.kalla-pkg-diff {
+    font-size: 0.85rem;
+    color: var(--kalla-gray-muted);   /* the "what changed" text for an updated package */
+    margin-top: 0.4rem;
+    line-height: 1.4;
+}
+.kalla-pkg-flags { margin-top: 0.5rem; } /* space above the row of warning pills (gagal/batal/diulang), when a card has any */
+
+/* ======================================================================
+   11. "BARU" (NEW) BADGE - saved-package tables
+   The small "🆕 Baru" pill that appears in its own dataframe column for
+   any package whose last_updated_at is within the last 24 hours (see
+   filter_service.is_recent()). This is just the text itself styled by
+   Streamlit's dataframe cell rendering - dataframes don't allow custom
+   HTML per cell (that's a Streamlit limitation, not something fixable
+   from CSS alone), so this targets the cell text/number alignment
+   instead of a true pill shape. Kept here so if a future version
+   switches to a custom HTML table, the "Baru" pill look already has a
+   home to move into.
+   ====================================================================== */
+div[data-testid="stDataFrame"] { font-variant-numeric: tabular-nums; } /* makes numbers in every table column line up evenly (same width per digit) instead of jittering left/right */

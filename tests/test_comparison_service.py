@@ -1,9 +1,9 @@
 """
 End-to-end (but offline - no real HTTP) test of the new/existing/updated
-detection logic, since that's the single most important feature per the
-project brief. We monkeypatch the scraper's `get_packages` so the test
-controls exactly what "was scraped" on each run, and use a temporary
-on-disk SQLite database so nothing touches the real data/lpse_monitor.db.
+detection logic, arguably the single most important thing this app gets
+right. We monkeypatch the scraper's `get_packages` so the test controls
+exactly what "was scraped" on each run, and use a temporary on-disk
+SQLite database so nothing touches the real data/lpse_monitor.db.
 """
 
 from scraper.lpse_scraper import Package

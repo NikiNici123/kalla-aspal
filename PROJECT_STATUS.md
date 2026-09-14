@@ -5,7 +5,7 @@
 Claude sessions. Update it (append, don't overwrite) whenever something
 changes — see "How to keep this file updated" at the bottom.*
 
-Last updated: **13 September 2026 (late night — branding, Excel Tables, two-dataset export)**
+Last updated: **14 September 2026 (latest) — code comments cleaned up across the project**
 
 ---
 
@@ -43,17 +43,18 @@ flowchart TB
         FS["filter_service.py<br/>(dashboard filter/sort/HPS-sum)"]
         CS["calendar_service.py<br/>(Akhir Pendaftaran calendar)"]
         ES["excel_service.py<br/>(Phase 6 export)"]
+        AS["activity_service.py<br/>(merges both snapshot histories for the Dashboard tab)"]
     end
 
     subgraph DB["SQLite (database/)"]
         TA["packages<br/>package_snapshots<br/>scrape_runs"]
-        TB["homepage_packages<br/>homepage_scrape_runs"]
+        TB["homepage_packages<br/>homepage_package_snapshots<br/>homepage_scrape_runs"]
         TC["regions"]
         TD["keywords"]
         TE["excel_config<br/>excel_generated_rows"]
     end
 
-    UI["app.py (Streamlit)<br/>5 tabs: Cek Tender / Ringkasan Beranda / Kata Kunci / Excel / Wilayah LPSE"]
+    UI["app.py (Streamlit)<br/>6 tabs: Dashboard / Cek Tender / Ringkasan Beranda / Kata Kunci / Excel / Wilayah LPSE"]
     XL["Reused .xlsx workbook<br/>(user's own file, on disk)"]
 
     A --> SA --> KW --> CA --> TA
@@ -66,6 +67,8 @@ flowchart TB
     TB --> CS --> UI
     TA --> ES
     TE --> ES --> XL
+    TA --> AS
+    TB --> AS --> UI
     TC --> UI
     TD --> UI
 ```
@@ -76,7 +79,7 @@ flowchart TB
 |---|---|---|---|
 | 1 | Basic scraper, keyword filter, region input | ✅ Done | Real API reverse-engineered, not guessed |
 | 2 | SQLite storage, new/existing/updated detection | ✅ Done | Full `package_snapshots` change history |
-| 3 | Dashboard | 🟡 Partial | Metrics row + per-tab filter/sort/HPS-sum + deadline calendar done; no separate landing page yet |
+| 3 | Dashboard | ✅ Done | Metrics row + per-tab filter/sort/HPS-sum + deadline calendar, PLUS a dedicated first "Dashboard" tab (`services/activity_service.py`) showing a Notion-style "Aktivitas Terbaru" feed merged from both datasets — added 2026-09-13 night |
 | 4 | Region management (add/edit/delete/activate) | ✅ Done | "Wilayah LPSE" tab; add+activate+delete built, no edit-in-place yet |
 | — | Homepage summary scrape + Akhir Pendaftaran | ✅ Done | Added 2026-09-13, not in the original phase list — see §5 |
 | 5 | Keyword management (add/edit/delete/enable) | ✅ Done | "Kata Kunci" tab - add/rename/enable/disable/delete, all live |
@@ -100,11 +103,18 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 - The homepage scraper's assumption that a category's badge count always
   equals its row count (i.e. nothing is truncated) is only verified
   against categories with a handful of packages so far.
+- **A renamed package with no Package ID (fallback-fingerprint path) is
+  currently mis-detected as a brand-new package**, since the fallback
+  fingerprint is partly derived from the name itself. Not yet fixed — see
+  §5 entry "Package name-change tracking + status-word flags", point (c),
+  for the full reasoning and why a fix was deliberately deferred.
 - Nothing in this project has been run/tested on the user's actual Windows
-  machine yet by the assistant — only offline unit tests (50, all passing)
+  machine yet by the assistant — only offline unit tests (70, all passing)
   run in the assistant's own sandbox, plus live investigation of the real
   site via a browser session. First real `streamlit run app.py` on
-  Nikol's PC is still pending confirmation.
+  Nikol's PC is still pending confirmation. This includes the new
+  Dashboard tab and Notion-style cards, added 2026-09-13 night — CSS/layout
+  unverified in a real browser, same caveat as the branding below.
 - **`LPSE_Monitor.exe` (via `build_exe.bat`) has NOT been built or tested.**
   The assistant has no Windows machine to run PyInstaller on, so
   `lpse_monitor.spec` follows the standard documented pattern for bundling
@@ -138,6 +148,298 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 
 Newest first. Each entry: what changed, why, and any decision worth
 remembering.
+
+### 2026-09-14 (latest) — Code comments cleaned up (less "AI-generated" reading)
+
+Nikol asked for the code to read more like something a person wrote -
+less obviously AI-generated. Went through every `.py` file and removed
+the clearest tells: direct references to Nikol by name inside code
+comments/docstrings ("per Nikol's request", "Nikol asked for..." - 9
+files had these), references to "the project brief"/"the spec" as if
+following an external requirements doc, "Phase N" labels left over from
+early planning, and meta-references to the assistant's own sandbox
+environment. Rewrote the affected docstrings in `app.py`,
+`ui/branding.py`, `services/region_import_service.py`,
+`services/status_flags.py`, `services/calendar_service.py`,
+`services/filter_service.py`, `services/excel_service.py`,
+`database/database.py`, `database/models.py`, `config/default_keywords.py`,
+and `tests/test_comparison_service.py` to state the same technical
+reasoning in plain first-person-engineer voice instead. No behavior
+changed - docstrings and comments only.
+
+- Verified offline: `python3 -m py_compile` on every touched file, plus
+  the full non-scraper test suite (42 passed, same 3 pre-existing
+  `requests`-import failures as every other entry above, unrelated to
+  this change).
+
+### 2026-09-14 (even later) — CSS commented line-by-line + hidden web-prototype scaffold
+
+Two follow-up asks after the CSS extraction and bulk-import work above.
+
+- **(a) `ui/style.css` now has a comment on nearly every line**, not just
+  section headers - every property explains in plain language what it
+  visually controls (e.g. `border-radius: 8px; /* rounded card corners */`),
+  plus a short "how to read a CSS rule" primer and a units cheat-sheet
+  (px/rem/hex) at the top of the file for anyone who's never touched CSS
+  before. Goal: Nikol should never have to guess what a line does or
+  Google a property name to make a color/spacing change.
+- **(b) `web-prototype/` - a hidden, disconnected scaffold**, added
+  because Nikol asked whether the app should become "a web type of file"
+  for future online deployment, and asked for the structure to already
+  exist (unused) in case that's wanted later. Nothing in it is wired into
+  `run_app.bat`/`app.py` - it's a static `index.html` + a snapshot copy of
+  `ui/style.css` + an empty `app.js`, styled to look like the real app but
+  with fully fake/hardcoded sample data, no working buttons. Its README
+  makes an important distinction explicit: **the current Streamlit app
+  can already be deployed online today via Streamlit Community Cloud,
+  with zero code changes** - turning it into plain HTML/CSS/JS is a
+  SEPARATE, much larger decision (effectively splitting into a Python
+  backend API + a browser frontend, roughly doubling what there is to
+  maintain), not something required just to "put it online." The README
+  lays out what a real build-out would take (FastAPI/Flask backend
+  wrapping the existing `services/*.py` almost unchanged, then swapping
+  the fake data for real `fetch()` calls) as a reference for later,
+  without recommending starting it now.
+- Verified offline: `python3 -m py_compile` unaffected (no `.py` files
+  touched by either change); manual brace-balance check on the CSS file
+  and a tag-balance check on the HTML file (`<div>`/`<span>`/`<a>`/etc.
+  all matched pairs) since Streamlit itself still can't run in the
+  assistant's sandbox - same verification method as every other CSS/HTML
+  change this project. **Neither has been seen in a real browser yet** -
+  still blocked on the device bridge (see entries above).
+
+### 2026-09-14 (later) — Bulk-import wilayah (paste list or bookmark file)
+
+Nikol asked whether admins could import LPSE regions in bulk instead of
+one-by-one (from a Chrome bookmark, specifically). New
+`services/region_import_service.py` (pure, unit-tested, no Streamlit or
+`requests` dependency) supports two input shapes, both reduced to a
+deduped list of region identifiers:
+
+- **Paste a list** - one URL or bare identifier per line, from anywhere
+  (email, Excel column, chat), not just a browser.
+- **Upload an exported bookmarks file** - Chrome/Edge/Firefox all export
+  bookmarks in the same standard HTML format, so this works for any of
+  them. Only `spse.inaproc.id` links are recognized; every other
+  bookmarked site is silently ignored, so an admin can export their
+  WHOLE bookmarks bar rather than needing an LPSE-only folder first.
+
+New "📥 Import Massal Wilayah" expander on the Wilayah LPSE tab (below
+the existing single-add form): pick a source, review the identifiers
+found (already-added ones are called out and auto-skipped), pick which
+of the rest to add via a multiselect, click Import. Reuses the existing
+`db.add_region()` in a loop - no new database logic, same duplicate
+handling and validation as the single-add form. Imported regions get
+their identifier as their name for now (same default the single-add
+form already uses when the name field is left blank) - there's no
+rename UI yet, only delete + re-add; noted as a possible follow-up, not
+built since Nikol didn't ask for it.
+
+- Verified offline: 10 new unit tests covering full-URL parsing, bare
+  identifiers, mixed/blank lines, dedup-preserving-order, unrelated URLs
+  ignored, and both Chrome-style (`HREF=`) and Firefox-style (`href=`)
+  bookmark export markup - all pass. Full non-scraper suite: 42 passed
+  (same 3 pre-existing `requests`-import failures as before, unrelated -
+  see §4). `app.py` and the new service module compile clean. **Not yet
+  seen running** - device bridge still unreachable this session, so this
+  hasn't touched a real browser yet either.
+
+### 2026-09-14 — CSS extracted to its own file + persistent "🆕 Baru" badge
+
+Nikol is now working from a second device (`E:\Project Kaizen`) and asked
+for two specific things: (1) a way to edit the app's CSS directly without
+fighting Python syntax, and (2) a small, persistent "this is new" marker
+on the saved-package tables (not just the "Paket Baru" cards shown right
+after a check, which disappear once you leave that tab).
+
+- **(a) `ui/style.css` — all CSS moved out of `ui/branding.py`.** The
+  entire `inject_css()` f-string (colors, buttons, tabs, metrics, cards,
+  the road strip, everything) now lives in a plain `.css` file next to
+  `branding.py`, using CSS custom properties (`:root { --kalla-green: ...; }`
+  + `var(--kalla-green)`) instead of Python string interpolation. To
+  change any color or spacing in the app: open `ui/style.css`, edit,
+  save, and refresh the browser tab — `inject_css()` re-reads the file on
+  every Streamlit rerun, so **no restart is needed**. The file is
+  numbered into 11 labelled sections (palette, base/font, header/road
+  strip, buttons, tabs, metrics, dividers/headers, deadline calendar,
+  activity cards, package cards, Baru badge) with a table of contents at
+  the top so a specific rule is easy to find. `ui/branding.py` keeps only
+  `render_header()`/`render_road_strip()` (small HTML snippets) and the
+  `CALENDAR_CONTAINER_KEY` constant, which must stay in sync with the
+  `.st-key-kalla_calendar` selector in style.css if ever renamed (noted
+  in both files). `inject_css()` fails soft (a `st.warning`, not a crash)
+  if the CSS file is ever missing.
+- **(b) Persistent "🆕 Baru" column.** New `filter_service.is_recent(iso_timestamp, hours=24)`
+  checks a row's `last_updated_at` against a 24-hour window
+  (`RECENT_WINDOW_HOURS`). `last_updated_at` is touched both on first
+  insert AND on any tracked-field update (see `comparison_service.py` /
+  `homepage_service.py`), so this one field covers both "brand new" and
+  "recently updated" — matching Nikol's literal request. Both
+  `st.dataframe()` saved-package tables (Daftar Lengkap, Ringkasan
+  Beranda) now show a "🆕 Baru" column right after Nama Paket, computed
+  per-row from `is_recent()`. This is separate from and persists longer
+  than the "Paket Baru"/"Paket Diperbarui" cards, which only exist for
+  the run that just happened — reopen the app tomorrow and a package
+  touched yesterday still shows the badge.
+- Verified offline: `is_recent()` has 4 new unit tests (true-within-
+  window, false-outside-window, custom-hours, malformed/missing
+  timestamp handling) — all pass, plus the full non-scraper test suite
+  (32 passed; the pre-existing `requests`-import failures on 3 tests are
+  the assistant sandbox's known missing-PyPI-package limitation, not a
+  regression — see §4). `ui/branding.py` and `app.py` both compile clean.
+  **Not yet verified in a real browser** — the device bridge to Nikol's
+  PC has been unreachable this whole session (see "can't click
+  anything?" below), so none of this has actually been seen running yet.
+
+### 2026-09-13 (night, later) — Scrape-result UI/UX redesign pass
+
+Nikol asked for another design pass specifically on how scraped packages
+are DISPLAYED (not just the new Dashboard tab), referencing Anthropic's
+"frontend-design" Claude Code skill again. Read the skill's guidance
+directly from GitHub (`plugins/frontend-design/skills/frontend-design/
+SKILL.md`) rather than assuming what it says: its core point is to ground
+design in the actual subject matter and pick ONE deliberate signature
+element instead of generic template defaults (it calls out "warm cream +
+serif", "near-black + acid-green", and "broadsheet + hairlines" by name as
+clustering patterns to avoid unless the brief demands them).
+
+- **(a) One new signature element: a "road" strip.** Kalla Aspal is an
+  asphalt/road-construction company, so the app's one bold visual accent
+  is now a dashed-gold-line-on-charcoal band under the header
+  (`ui/branding.py`'s `.kalla-road` + `render_road_strip()`) - literally a
+  road marking seen from above - instead of the previous generic green-to-
+  gold gradient rule. That gradient WAS being reused on every
+  `st.divider()`, which the skill flags as exactly the kind of decoration-
+  that-doesn't-serve-content to remove: dividers are now a plain quiet
+  hairline, and the road motif appears exactly once so it stays a
+  deliberate accent rather than wallpaper.
+- **(b) Scrape-result package cards redesigned.** "Paket Baru"/"Paket
+  Diperbarui" in both check tabs used to be a plain bordered container
+  with "**Label:** value" text columns - functional but reads as a form,
+  not data. New `render_package_card()` in `app.py` (backed by
+  `ui/branding.py`'s `.kalla-pkg-*` CSS) gives each package a proper card:
+  the name itself is the clickable link (same pattern as the Dashboard
+  feed and the calendar), an icon+label meta row (📍 wilayah, 🏗️ status,
+  💰 HPS, 🕒/📅 date) replaces the old column layout, and gagal/batal/
+  diulang status flags render as inline warning pills on the card itself
+  instead of a separate `st.warning()` line below it. Same visual family
+  as the Dashboard's activity cards, so a package looks like "the same
+  kind of thing" wherever it's shown.
+- **(c) Saved-package tables get a clickable Link column.** Both
+  "Paket Relevan Tersimpan" tables now use `st.column_config.LinkColumn`
+  so each row has a "🔗 Buka" link straight to LPSE without leaving the
+  table - previously the only way to open a package was via the calendar
+  or a fresh scrape result. Nama Paket is now the first column (the
+  actual subject of each row) with a wider column width, instead of
+  Kode Lelang leading.
+- **(d) Section headers get a gold tick** (`h3 { border-left }` in
+  `inject_css()`) so `st.subheader`/`### `-level headings read as a
+  sequence of distinct sections when scanning down a tab, not one
+  undifferentiated column of text. Top metrics row shortened its labels
+  ("Daftar Lengkap" / "Ringkasan Beranda" instead of "Paket Relevan -
+  ...") with a `help=` tooltip carrying the fuller description, since the
+  old labels were long enough to wrap awkwardly in a 4-column layout.
+- Verified offline: all 70 tests still pass (this was CSS/markup only, no
+  service-layer logic touched), plus a standalone check that confirms the
+  new card HTML is well-formed and correctly escapes special characters
+  (`<`, `&`, quotes) in package names and URLs before being rendered via
+  `unsafe_allow_html` - still unverified in an actual browser, same
+  caveat as the rest of the branding work (see §4).
+
+### 2026-09-13 (night) — "Aktivitas Terbaru" dashboard tab + clickable calendar names
+
+Nikol asked for a proper, "extremely user friendly" dashboard — clarified
+via follow-up questions to mean: Notion-style (clean, minimalist), as a
+NEW FIRST TAB, showing only recent activity/changes (not stat cards or
+charts, both of which Nikol explicitly did not pick). Also asked that
+clicking a calendar day make each package NAME itself clickable, straight
+to its LPSE page.
+
+- **(a) New `homepage_package_snapshots` table**, mirroring
+  `package_snapshots` exactly. The Ringkasan Beranda dataset previously had
+  NO persisted per-package change history at all (unlike Daftar Lengkap) —
+  needed one so "Aktivitas Terbaru" has real, durable data to show instead
+  of whatever happens to still be in Streamlit's session state after a
+  restart. `services/homepage_service.py` now calls the new
+  `db.insert_homepage_snapshot(...)` at both the new-package and
+  updated-package points, exactly mirroring how `comparison_service.py`
+  already calls `db.insert_snapshot(...)`.
+- **(b) New `services/activity_service.py`** merges
+  `db.get_recent_package_snapshots()` (Daftar Lengkap) and
+  `db.get_recent_homepage_snapshots()` (Ringkasan Beranda) into one
+  newest-first feed, tagging each entry with its dataset, whether it's a
+  brand-new package vs. an update, and any `status_flags` (gagal/batal/
+  diulang/gugur) detected in its name — reusing the flag detector added
+  earlier today rather than duplicating that logic.
+- **(c) New "🏠 Dashboard" tab**, first in the tab bar (`app.py`), rendering
+  the merged feed as Notion-style cards (`ui/branding.py`'s new
+  `kalla-activity-*` CSS classes: white surface, thin hairline border, a
+  slim green/gold left accent for new vs. updated, small muted pills for
+  dataset + flags) — the package name in each card is itself the clickable
+  link to LPSE, same pattern as (d) below. All package-name/summary text is
+  HTML-escaped before being rendered via `unsafe_allow_html`, since it's
+  scraped external text.
+- **(d) Calendar detail list is now clickable.** In "Ringkasan Beranda"'s
+  deadline calendar, clicking a day used to show the package name in bold
+  PLUS a separate "Buka di LPSE" link line below it. Per Nikol's explicit
+  answer, that's now just the name itself as a markdown link (bold,
+  clickable) — the separate line is gone. New `paket_link_markdown()`
+  helper in `app.py` (escapes `[`/`]` in the name so an unusual package
+  name can't break the link syntax) backs this.
+  Hover still shows the existing tooltip (plain text listing) — browsers
+  don't support clickable links inside a native `title` tooltip, which was
+  already explained to Nikol before building this.
+- 6 new tests: `tests/test_activity_service.py` (merge/sort across both
+  datasets, is-new vs. updated flagging, status-flag pass-through, combined
+  (not per-dataset) limit, graceful handling of an unparseable snapshot
+  row) and one new integration test in `tests/test_homepage_service.py`
+  confirming `insert_homepage_snapshot` actually gets called on both the
+  new- and updated-package paths — 70 total, all passing.
+
+### 2026-09-13 (very late) — Package name-change tracking + status-word flags
+
+Nikol asked whether the app notices when LPSE changes a package's own
+NAME over time (e.g. appending "(Tender Gagal)" to an existing package's
+title) — prompted an audit of the change-detection logic:
+
+- **(a) Already working, now clearer:** for packages WITH a Package ID
+  (the normal case), a name-only change was already being detected as
+  "Updated" (`nama_paket` was already in both services' `TRACKED_FIELDS`)
+  — but the shown message was just the generic "Nama paket berubah", not
+  the actual before/after text. Fixed in both `comparison_service.py` and
+  `homepage_service.py`'s `_diff_summary()` to show
+  `Nama paket berubah: "<lama>" -> "<baru>"`, matching how every other
+  tracked field (Tahapan, HPS, Nilai Kontrak, Akhir Pendaftaran) already
+  displays its old → new value.
+- **(b) New: status-word detection.** Added `services/status_flags.py` -
+  a small, transparent word-boundary check for "gagal", "batal"/
+  "dibatalkan", "diulang", and "gugur" appearing directly in a package's
+  name (as opposed to the site's separate `<span class="badge">`
+  elements, which `badges` already captures). When found, the app shows a
+  visible `⚠️ Kemungkinan Tender Gagal` (etc.) warning under the package
+  in the "Paket Baru"/"Paket Diperbarui" cards, AND a "Catatan" column
+  was added to both main tables so this is visible any time, not just
+  right after a scrape. This is a plain text check, not a guarantee — it
+  never hides or re-categorizes a package on its own; a human still
+  decides what it means.
+- **(c) Known, NOT fixed - flagged for awareness:** packages that have NO
+  Package ID (the rare fallback path - see `packages`/`homepage_packages`
+  schema comments) are matched across scrapes by a fingerprint that's
+  partly built FROM the package name itself
+  (`make_fallback_fingerprint` in `scraper/lpse_scraper.py`). If such a
+  package's name changes, its fingerprint changes too, and today it would
+  look like a brand-new package rather than an update to the existing
+  one — a real gap, but only for packages lacking an ID, which hasn't
+  been observed in any real sample so far (Package ID extraction has been
+  reliable everywhere checked). Deliberately NOT changed this round: doing
+  so would alter the fingerprint formula, which would itself orphan any
+  fallback-fingerprint rows already stored from before the change, with no
+  clean way to reconcile them automatically. Revisit if Nikol ever
+  actually sees a suspicious duplicate "new" entry that looks like a
+  renamed version of an existing package.
+- 9 new tests (`tests/test_status_flags.py`: flag detection, no false
+  positives on ordinary names or word-embedded substrings, both services'
+  updated diff message) — 65 total, all passing.
 
 ### 2026-09-13 (late night) — Branding, Excel Tables + two-dataset export, smaller calendar, cleanup
 
@@ -331,6 +633,7 @@ remembering.
 | `package_snapshots` | Change history for `packages` (status/HPS/value changes) |
 | `scrape_runs` | Log of every full-list ("Cek Tender") run |
 | `homepage_packages` | Latest known state of every homepage-summary package seen |
+| `homepage_package_snapshots` | Change history for `homepage_packages` (mirrors `package_snapshots`) — powers the "Aktivitas Terbaru" dashboard tab together with `package_snapshots` |
 | `homepage_scrape_runs` | Log of every homepage-summary ("Cek Ringkasan Beranda") run |
 | `excel_config` | Current Excel export settings, one row per dataset (`lelang`/`beranda`) - file path, sheet, start cell, columns, mode, Excel-Table toggle |
 | `excel_generated_rows` | Which (file, sheet, row) triples this app wrote - so exports never touch rows a person entered by hand |
@@ -349,8 +652,11 @@ Not yet decided — Nikol's call:
    list for a dataset, ignoring the dashboard's active filter. Worth
    revisiting once Nikol has used the filter/Excel tab a bit and knows
    whether "export only what I'm currently filtering to" is actually wanted.
-3. **Finish Phase 3** — a proper dashboard/landing page, rather than
-   metrics + filters embedded inside each tab.
+3. ~~Finish Phase 3~~ — done 2026-09-13 night (see §5): a dedicated
+   "Dashboard" tab now exists, first in the tab bar, with the recent-
+   activity feed Nikol asked for. Stat cards/upcoming-deadline widgets/
+   charts were offered but explicitly NOT selected by Nikol — worth
+   revisiting only if asked for later.
 4. **Finish Phase 7** — a dedicated scrape-history view and a per-package
    detail/change-history page (the data already exists in
    `package_snapshots` / `scrape_runs` / `homepage_scrape_runs`, just no
