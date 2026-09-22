@@ -166,21 +166,60 @@ def render_package_card(nama_paket, package_url, meta_items, is_new, change_summ
     )
 
 
+def render_package_list(pkgs, render_fn, key_prefix, initial_limit=5) -> None:
+    """Renders `render_fn(pkg)` for each package, capped at `initial_limit`
+    with a "Tampilkan Semua" button to reveal the rest - same idea as the
+    per-region status bell (render_result_banner) applied here: a check
+    that turns up a dozen-plus new/updated packages used to dump every
+    single card on screen at once, which meant a lot of scrolling before
+    you could see anything below the fold. `key_prefix` must be unique per
+    call site (e.g. "lelang_new", "beranda_updated") so each list's
+    show-all state is independent and survives a rerun."""
+    show_all_key = f"{key_prefix}_show_all"
+    show_all = st.session_state.get(show_all_key, False)
+    visible = pkgs if show_all or len(pkgs) <= initial_limit else pkgs[:initial_limit]
+
+    for pkg in visible:
+        render_fn(pkg)
+
+    remaining = len(pkgs) - len(visible)
+    if remaining > 0:
+        if st.button(f"\U0001F53D Tampilkan Semua ({remaining} lagi)", key=f"{key_prefix}_show_all_btn"):
+            st.session_state[show_all_key] = True
+            st.rerun()
+
+
 def render_result_banner(result_state, new_label):
     """Shared "N PAKET BARU DITEMUKAN" banner + region-by-region status
     block, used by both the Daftar Lengkap and Ringkasan Beranda check
     buttons - they render identically up to this point, then each tab
     displays its own new/updated package cards (different fields per
-    package, so that part stays inline in each tab)."""
-    for rr in result_state["region_results"]:
-        if not rr["success"]:
-            with st.expander(f"⚠️ Gagal mengambil data dari LPSE {rr['region_identifier']}."):
-                st.error(rr["error_message"])
-        else:
-            st.caption(
-                f"{rr['region_identifier']}: {rr['total_found']} paket ditemukan, "
-                f"{rr['relevant_found']} relevan (terkait jalan)."
-            )
+    package, so that part stays inline in each tab).
+
+    The per-region status lines (one per active wilayah - "total found /
+    relevant found" or an error) used to print straight onto the page as
+    a stack of st.caption/st.expander lines, which could push the actual
+    "N PAKET BARU" banner and package cards below the fold when many
+    regions were active. They're tucked behind one small bell-style
+    button instead (st.popover - same "click a small icon to reveal the
+    detail" idea as the Akhir Pendaftaran calendar's day cells), so the
+    page stays short and the detail is still one click away, not gone."""
+    region_results = result_state["region_results"]
+    fail_count = sum(1 for rr in region_results if not rr["success"])
+
+    bell_label = f"\U0001F514 Status per Wilayah ({len(region_results)})"
+    if fail_count:
+        bell_label += f" • ⚠️ {fail_count} gagal"
+
+    with st.popover(bell_label):
+        for rr in region_results:
+            if not rr["success"]:
+                st.error(f"**{rr['region_identifier']}**: gagal mengambil data.\n\n{rr['error_message']}")
+            else:
+                st.caption(
+                    f"{rr['region_identifier']}: {rr['total_found']} paket ditemukan, "
+                    f"{rr['relevant_found']} relevan (terkait jalan)."
+                )
 
     new_count = len(result_state["new"])
     if new_count > 0:
@@ -258,6 +297,68 @@ if not active_regions:
         "Belum ada wilayah LPSE yang aktif. Buka tab **Wilayah LPSE** di bawah untuk menambahkannya "
         "terlebih dahulu, baru kedua tombol cek tender di bawah bisa dipakai."
     )
+
+# Runs BOTH checks (Daftar Lengkap + Ringkasan Beranda) back to back from
+# one click, right here above the tabs - no need to open each tab and hit
+# its own button separately. Reuses the exact same session_state keys
+# (last_summary_lelang/last_summary_beranda) the two tabs' own buttons
+# already write to, so the "N PAKET BARU" banner and package cards on
+# those tabs pick this up automatically too - this button is purely a
+# shortcut, not a separate code path.
+check_all_clicked = st.button(
+    "\U0001F504 CEK SEMUA SEKALIGUS (Daftar Lengkap + Ringkasan Beranda)",
+    type="primary", use_container_width=True,
+    disabled=not active_regions, key="btn_cek_semua",
+    help="Menjalankan kedua pemeriksaan satu demi satu tanpa perlu pindah tab - cocok untuk cek pagi/sore rutin.",
+)
+
+if check_all_clicked:
+    region_ids = [r["region_identifier"] for r in active_regions]
+    with st.status("Memeriksa semua (Daftar Lengkap + Ringkasan Beranda)...", expanded=True) as status:
+        with db.connect() as conn:
+            st.write("**1/2 - Daftar Lengkap:** mengambil data dan menyaring paket terkait jalan...")
+            summary = run_scrape_and_compare(conn, region_ids)
+            st.write(f"Daftar Lengkap selesai - {len(summary.new_packages)} paket baru.")
+            st.write("**2/2 - Ringkasan Beranda:** mengambil data dan menyaring paket terkait jalan...")
+            hp_summary = run_homepage_scrape_and_compare(conn, region_ids)
+            st.write(f"Ringkasan Beranda selesai - {len(hp_summary.new_packages)} paket baru.")
+        status.update(label="PEMERIKSAAN SELESAI (KEDUANYA)", state="complete")
+
+    st.session_state["last_summary_lelang"] = {
+        "new": summary.new_packages,
+        "updated": summary.updated_packages,
+        "existing": summary.existing_packages,
+        "region_results": [
+            {
+                "region_identifier": r.region_identifier, "success": r.success,
+                "error_message": r.error_message, "total_found": r.total_found,
+                "relevant_found": r.relevant_found,
+            }
+            for r in summary.region_results
+        ],
+    }
+    st.session_state["last_summary_beranda"] = {
+        "new": hp_summary.new_packages,
+        "updated": hp_summary.updated_packages,
+        "existing": hp_summary.existing_packages,
+        "region_results": [
+            {
+                "region_identifier": r.region_identifier, "success": r.success,
+                "error_message": r.error_message, "total_found": r.total_found,
+                "relevant_found": r.relevant_found,
+            }
+            for r in hp_summary.region_results
+        ],
+    }
+    st.session_state["last_check_all_message"] = (
+        f"{len(summary.new_packages)} paket baru di Daftar Lengkap, "
+        f"{len(hp_summary.new_packages)} paket baru di Ringkasan Beranda."
+    )
+    st.rerun()
+
+check_all_message = st.session_state.get("last_check_all_message")
+if check_all_message:
+    st.success(f"✅ Cek Semua Sekaligus selesai - {check_all_message} Buka tab di bawah untuk detail lengkap.")
 
 st.divider()
 
@@ -348,8 +449,9 @@ with tab_lelang:
 
         if new_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
-            for pkg in new_pkgs:
-                render_package_card(
+            render_package_list(
+                new_pkgs,
+                lambda pkg: render_package_card(
                     pkg["nama_paket"], pkg.get("package_url"),
                     meta_items=[
                         ("\U0001F4CD", "Wilayah", pkg["region_identifier"]),
@@ -358,17 +460,22 @@ with tab_lelang:
                         ("\U0001F553", "Ditemukan", pkg["scraped_at"]),
                     ],
                     is_new=True,
-                )
+                ),
+                key_prefix="lelang_new",
+            )
 
         if updated_pkgs:
             st.markdown("### \U0001F501 Paket Diperbarui")
-            for pkg in updated_pkgs:
-                render_package_card(
+            render_package_list(
+                updated_pkgs,
+                lambda pkg: render_package_card(
                     pkg["nama_paket"], pkg.get("package_url"),
                     meta_items=[("\U0001F4CD", "Wilayah", pkg["region_identifier"])],
                     is_new=False,
                     change_summary=pkg.get("_change_summary", ""),
-                )
+                ),
+                key_prefix="lelang_updated",
+            )
 
     st.divider()
     st.subheader("Paket Relevan Tersimpan - Daftar Lengkap")
@@ -466,8 +573,9 @@ with tab_beranda:
 
         if new_hp_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
-            for pkg in new_hp_pkgs:
-                render_package_card(
+            render_package_list(
+                new_hp_pkgs,
+                lambda pkg: render_package_card(
                     pkg["nama_paket"], pkg.get("package_url"),
                     meta_items=[
                         ("\U0001F4CD", "Wilayah", pkg["region_identifier"]),
@@ -476,17 +584,22 @@ with tab_beranda:
                         ("\U0001F4C5", "Akhir Pendaftaran", pkg["akhir_pendaftaran_text"]),
                     ],
                     is_new=True,
-                )
+                ),
+                key_prefix="beranda_new",
+            )
 
         if updated_hp_pkgs:
             st.markdown("### \U0001F501 Paket Diperbarui")
-            for pkg in updated_hp_pkgs:
-                render_package_card(
+            render_package_list(
+                updated_hp_pkgs,
+                lambda pkg: render_package_card(
                     pkg["nama_paket"], pkg.get("package_url"),
                     meta_items=[("\U0001F4CD", "Wilayah", pkg["region_identifier"])],
                     is_new=False,
                     change_summary=pkg.get("_change_summary", ""),
-                )
+                ),
+                key_prefix="beranda_updated",
+            )
 
     st.divider()
     st.subheader("Kalender Akhir Pendaftaran")

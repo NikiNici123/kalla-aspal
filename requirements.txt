@@ -3,3 +3,8 @@ requests>=2.31
 beautifulsoup4>=4.12
 openpyxl>=3.1
 pytest>=7.4
+# Windows-only marker (sys_platform == "win32") - deadline reminders
+# (check_reminders.py / setup_reminders.bat) use this for native Windows
+# notifications. Skipped automatically on any non-Windows machine, so it
+# never breaks running the tests or the app itself elsewhere.
+win11toast>=0.36; sys_platform == "win32"

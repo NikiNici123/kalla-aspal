@@ -1,0 +1,8 @@
+# One reminder check time per line, 24-hour HH:MM format, one line each.
+# setup_reminders.bat reads this file and registers one Windows Task
+# Scheduler entry per line - edit this file (add, remove, or change a
+# time), then double-click setup_reminders.bat again to apply it.
+# Lines starting with # are ignored.
+08:00
+13:00
+16:00

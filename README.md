@@ -105,6 +105,56 @@ full technical reasoning:
 | Registration deadline | not available | yes ("Akhir Pendaftaran") |
 | Needs login/session | yes (handled automatically) | no - plain public page |
 
+## Deadline reminders (no email, nothing leaves your PC)
+
+Double-click **`setup_reminders.bat`** once. From then on, Windows itself
+will pop up a normal notification (same kind Outlook/Teams give you) at
+each time listed in `config\reminder_times.txt` (default **08:00, 13:00,
+16:00**) whenever a saved, relevant package's **Akhir Pendaftaran** is
+within 3 days - even on a day you never open the app. It works by
+registering one Windows Task Scheduler entry per time in that file, each
+running `check_reminders.py`; that script only reads the same local
+database the app already has (so a reminder is only as fresh as your
+last check inside the app), and shows the notification via `win11toast`
+- no email, no account, no server, nothing leaves this PC.
+
+**Click a notification (or its "Sudah Saya Cek" button) and the rest of
+that day's checks stay quiet** - e.g. acknowledge the 13:00 one and the
+16:00 one won't fire, but it comes back fresh tomorrow. This is a simple
+once-a-day flag, not tracked per package - if a *different* urgent
+package shows up later the same day, it still stays quiet until
+tomorrow. Good enough for "don't nag me again today," not meant as a
+precise per-deadline read receipt.
+
+- **Change the check times:** edit `config\reminder_times.txt` (one
+  `HH:MM` per line, any number of lines), then double-click
+  `setup_reminders.bat` again to apply it - safe to re-run any time, it
+  replaces the old schedule rather than piling up duplicates.
+- **Change how many days ahead you're warned:** edit
+  `REMINDER_DAYS_BEFORE` near the top of `check_reminders.py` (default 3).
+- Want to test it right now instead of waiting for a scheduled time: run
+  `venv\Scripts\python check_reminders.py` - it stays silent if nothing
+  is actually due within the window, which is normal.
+- Every run leaves one line in `logs\reminder.log` either way (including
+  whether it was skipped because today was already acknowledged), so you
+  can confirm the schedule is actually firing even on quiet days.
+- Requires the PC to be on (not asleep/off) at a scheduled time - if
+  it's off, that one's simply skipped until the next time on the list.
+- To turn it off entirely, open **Task Scheduler** from the Start Menu
+  and find/delete the tasks named starting "Kalla Aspal - Reminder
+  Deadline".
+- **Honest note (read before relying on this):** like `build_exe.bat`,
+  none of this has been tested on a real Windows machine yet. Two parts
+  specifically are uncertain until tried for real: whether clicking the
+  notification reliably gets detected as an acknowledgment (the matching
+  logic in `check_reminders.py` is a deliberately lenient best guess),
+  and whether a click still counts once ~2 minutes have passed since the
+  notification appeared (it most likely does NOT once this script's own
+  process has exited - see the comments in `check_reminders.py` for
+  why). If it behaves differently than described here, check
+  `logs\reminder.log` and tell me what you see so the matching logic can
+  be adjusted to match reality.
+
 ## Pushing changes to GitHub
 
 Double-click **`push_to_github.bat`** in this folder. It stages, commits
@@ -187,6 +237,10 @@ anonymous HTTP GET + HTML parsing (no session needed at all).
 - **`LPSE_Monitor.exe` (via `build_exe.bat`) is unverified** - it was
   written following the standard way to package a Streamlit app with
   PyInstaller, but has not been built/tested on a real Windows machine.
+- **Deadline reminders (`check_reminders.py` / `setup_reminders.bat`) are
+  also unverified** - the notification logic itself is unit-tested, but
+  actually popping up a Windows notification via `win11toast` has not
+  been tried on a real Windows machine yet.
 - **The Kalla Aspal color theme hasn't been visually checked** in a real
   browser by the assistant (no Streamlit runtime available in its own
   sandbox) - the colors/layout should look right, but a first look is
@@ -204,6 +258,8 @@ kalla-aspal/
     run_app.bat                       One-click launcher (no CMD typing)
     build_exe.bat                     Builds LPSE_Monitor.exe (unverified - see limitations)
     push_to_github.bat                One-click add+commit+push
+    setup_reminders.bat                One-click: registers the Windows deadline-notification schedule
+    check_reminders.py                Fires the actual Windows notification - run by Task Scheduler, not by hand
     .streamlit/config.toml            Base color theme (Kalla Aspal green/gold)
     data/                             SQLite database lives here (gitignored)
     backups/                           Auto-created Excel backups (gitignored)
@@ -222,12 +278,14 @@ kalla-aspal/
         excel_service.py              Excel export (Phase 6) - two datasets, Excel Tables, file discovery
         status_flags.py               Detects "gagal"/"batal"/"diulang"/etc. inside a package's name
         activity_service.py           Merges both datasets' change history for the Dashboard tab
+        reminder_service.py           Deadline-window date logic behind check_reminders.py
     ui/
         branding.py                    Header banner + road-strip HTML, reads style.css for all CSS
         style.css                      All colors/CSS in one plain file - edit this to change the look
     config/
         default_keywords.py           Seed keyword list (first run only)
-    tests/                            70 offline unit tests (see below)
+        reminder_times.txt            Editable list of daily reminder check times (HH:MM, one per line)
+    tests/                            93 offline unit tests (see below)
 ```
 
 ## Running the tests
