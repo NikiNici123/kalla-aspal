@@ -189,7 +189,7 @@ def render_package_list(pkgs, render_fn, key_prefix, initial_limit=5) -> None:
             st.rerun()
 
 
-def render_result_banner(result_state, new_label):
+def render_result_banner(result_state, new_label, sort_key_prefix):
     """Shared "N PAKET BARU DITEMUKAN" banner + region-by-region status
     block, used by both the Daftar Lengkap and Ringkasan Beranda check
     buttons - they render identically up to this point, then each tab
@@ -203,7 +203,15 @@ def render_result_banner(result_state, new_label):
     regions were active. They're tucked behind one small bell-style
     button instead (st.popover - same "click a small icon to reveal the
     detail" idea as the Akhir Pendaftaran calendar's day cells), so the
-    page stays short and the detail is still one click away, not gone."""
+    page stays short and the detail is still one click away, not gone.
+
+    A small "Urutkan" sort dropdown sits right next to the bell (reuses
+    filter_service.SORT_OPTIONS/sort_rows - same sort logic as the saved-
+    package tables further down) so the "Paket Baru"/"Paket Diperbarui"
+    cards can be sorted (e.g. by HPS) without needing to scroll all the
+    way down to the saved-package table's own filter controls. Returns
+    the new/updated lists already sorted - callers should use the
+    returned lists, not `result_state["new"]`/`["updated"]` directly."""
     region_results = result_state["region_results"]
     fail_count = sum(1 for rr in region_results if not rr["success"])
 
@@ -211,15 +219,24 @@ def render_result_banner(result_state, new_label):
     if fail_count:
         bell_label += f" • ⚠️ {fail_count} gagal"
 
-    with st.popover(bell_label):
-        for rr in region_results:
-            if not rr["success"]:
-                st.error(f"**{rr['region_identifier']}**: gagal mengambil data.\n\n{rr['error_message']}")
-            else:
-                st.caption(
-                    f"{rr['region_identifier']}: {rr['total_found']} paket ditemukan, "
-                    f"{rr['relevant_found']} relevan (terkait jalan)."
-                )
+    bell_col, sort_col = st.columns([3, 2])
+    with bell_col:
+        with st.popover(bell_label):
+            for rr in region_results:
+                if not rr["success"]:
+                    st.error(f"**{rr['region_identifier']}**: gagal mengambil data.\n\n{rr['error_message']}")
+                else:
+                    st.caption(
+                        f"{rr['region_identifier']}: {rr['total_found']} paket ditemukan, "
+                        f"{rr['relevant_found']} relevan (terkait jalan)."
+                    )
+    with sort_col:
+        sort_label = st.selectbox(
+            "Urutkan Paket Baru/Diperbarui",
+            list(filter_service.SORT_OPTIONS.keys()),
+            key=f"{sort_key_prefix}_result_sort",
+            label_visibility="collapsed",
+        )
 
     new_count = len(result_state["new"])
     if new_count > 0:
@@ -227,7 +244,92 @@ def render_result_banner(result_state, new_label):
     else:
         st.info(f"## TIDAK ADA {new_label}")
 
-    return result_state["new"], result_state["updated"]
+    sorted_new = filter_service.sort_rows(result_state["new"], sort_label)
+    sorted_updated = filter_service.sort_rows(result_state["updated"], sort_label)
+    return sorted_new, sorted_updated
+
+
+def render_deadline_calendar_popover(hp_rows_all) -> None:
+    """Small calendar-icon popover - same "click a small icon to reveal
+    the detail" idea as the Status per Wilayah bell - showing the Akhir
+    Pendaftaran month calendar. Lives in the top-right of the page, above
+    the tabs, so it's reachable from every tab instead of only being
+    visible by scrolling to the bottom of Ringkasan Beranda. Behavior
+    (month nav, day grid with dot markers, click-a-day-for-detail) is
+    unchanged from the old always-visible inline version."""
+    cal_label = "\U0001F4C5"
+    if hp_rows_all:
+        cal_label += f" ({len(hp_rows_all)})"
+
+    with st.popover(cal_label, help="Kalender Akhir Pendaftaran", use_container_width=True):
+        st.markdown("**Kalender Akhir Pendaftaran**")
+
+        if not hp_rows_all:
+            st.caption(
+                "Belum ada data. Klik \"CEK RINGKASAN BERANDA\" di tab Ringkasan Beranda untuk mulai memeriksa."
+            )
+            return
+
+        today = date.today()
+        st.session_state.setdefault("cal_year", today.year)
+        st.session_state.setdefault("cal_month", today.month)
+        st.session_state.setdefault("cal_selected_date", None)
+
+        with st.container(key=branding.CALENDAR_CONTAINER_KEY):
+            nav1, nav2, nav3 = st.columns([1, 2, 1])
+            if nav1.button("←", key="cal_prev", use_container_width=True):
+                y, m = calendar_service.add_months(st.session_state["cal_year"], st.session_state["cal_month"], -1)
+                st.session_state["cal_year"], st.session_state["cal_month"] = y, m
+                st.rerun()
+            nav2.markdown(
+                f"<h6 style='text-align:center'>{calendar_service.MONTH_NAMES_ID[st.session_state['cal_month']]} "
+                f"{st.session_state['cal_year']}</h6>",
+                unsafe_allow_html=True,
+            )
+            if nav3.button("→", key="cal_next", use_container_width=True):
+                y, m = calendar_service.add_months(st.session_state["cal_year"], st.session_state["cal_month"], 1)
+                st.session_state["cal_year"], st.session_state["cal_month"] = y, m
+                st.rerun()
+
+            grouped = calendar_service.group_by_deadline_date(hp_rows_all)
+            grid = calendar_service.build_month_grid(st.session_state["cal_year"], st.session_state["cal_month"])
+
+            header_cols = st.columns(7, gap="small")
+            for i, wd in enumerate(calendar_service.WEEKDAY_NAMES_ID):
+                header_cols[i].markdown(f"<div style='text-align:center;font-size:0.72rem'><b>{wd}</b></div>", unsafe_allow_html=True)
+
+            for week in grid:
+                week_cols = st.columns(7, gap="small")
+                for i, day in enumerate(week):
+                    with week_cols[i]:
+                        if day is None:
+                            st.write("")
+                            continue
+                        day_key = day.isoformat()
+                        day_pkgs = grouped.get(day_key, [])
+                        label = f"{day.day}" + (" •" if day_pkgs else "")
+                        help_text = None
+                        if day_pkgs:
+                            names = "\n".join(f"- {p['nama_paket']}" for p in day_pkgs[:5])
+                            help_text = f"{len(day_pkgs)} paket jatuh tempo:\n{names}"
+                        if st.button(label, key=f"cal_day_{day_key}", help=help_text, use_container_width=True):
+                            st.session_state["cal_selected_date"] = day_key
+                            st.rerun()
+
+        selected = st.session_state.get("cal_selected_date")
+        if selected and selected in grouped:
+            st.markdown(f"**Paket dengan Akhir Pendaftaran {selected}:**")
+            for p in grouped[selected]:
+                with st.container(border=True):
+                    # Package name is the clickable link straight to the
+                    # LPSE page - no separate "Buka di LPSE" line needed.
+                    st.markdown(paket_link_markdown(p["nama_paket"], p["package_url"]))
+                    c1, c2, c3 = st.columns(3)
+                    c1.write(f"**Wilayah:** {p['region_identifier']}")
+                    c2.write(f"**Bagian:** {p['section']} / {p['kategori']}")
+                    c3.write(f"**HPS:** {p['hps_text'] or '-'}")
+        elif selected:
+            st.session_state["cal_selected_date"] = None
 
 
 def render_activity_card(entry) -> None:
@@ -280,11 +382,23 @@ with db.connect() as conn:
     relevant_homepage_total = len(db.get_relevant_homepage_packages(conn))
     last_run = db.get_last_completed_run(conn)
     last_homepage_run = db.get_last_completed_homepage_run(conn)
+    # Also needed by the calendar icon below AND by the saved-package
+    # table inside tab_beranda further down - fetched once here so both
+    # reuse the same list instead of hitting the database twice.
+    hp_rows_all = db.get_relevant_homepage_packages(conn)
 
 last_check = latest_timestamp(
     last_run["finished_at"] if last_run else None,
     last_homepage_run["finished_at"] if last_homepage_run else None,
 )
+
+# Small calendar icon, top-right, above the tabs - fills the space that
+# used to sit empty above the metrics row and puts the Akhir Pendaftaran
+# calendar one click away from every tab instead of only reachable by
+# scrolling to the bottom of Ringkasan Beranda.
+_, header_cal_col = st.columns([8, 1])
+with header_cal_col:
+    render_deadline_calendar_popover(hp_rows_all)
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("\U0001F553 Terakhir Cek", last_check[:16].replace("T", " ") if last_check else "Belum pernah")
@@ -444,8 +558,9 @@ with tab_lelang:
 
     lelang_result = st.session_state.get("last_summary_lelang")
     if lelang_result:
-        render_result_banner(lelang_result, "PAKET BARU DITEMUKAN")
-        new_pkgs, updated_pkgs = lelang_result["new"], lelang_result["updated"]
+        new_pkgs, updated_pkgs = render_result_banner(
+            lelang_result, "PAKET BARU DITEMUKAN", sort_key_prefix="lelang",
+        )
 
         if new_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
@@ -568,8 +683,9 @@ with tab_beranda:
 
     beranda_result = st.session_state.get("last_summary_beranda")
     if beranda_result:
-        render_result_banner(beranda_result, "PAKET BARU DITEMUKAN (BERANDA)")
-        new_hp_pkgs, updated_hp_pkgs = beranda_result["new"], beranda_result["updated"]
+        new_hp_pkgs, updated_hp_pkgs = render_result_banner(
+            beranda_result, "PAKET BARU DITEMUKAN (BERANDA)", sort_key_prefix="beranda",
+        )
 
         if new_hp_pkgs:
             st.markdown("### \U0001F195 Paket Baru")
@@ -602,79 +718,10 @@ with tab_beranda:
             )
 
     st.divider()
-    st.subheader("Kalender Akhir Pendaftaran")
-    with db.connect() as conn:
-        hp_rows_all = db.get_relevant_homepage_packages(conn)
-
-    grouped = {}  # always defined, even if the calendar itself isn't rendered below
-    if not hp_rows_all:
-        st.caption("Belum ada data. Klik \"CEK RINGKASAN BERANDA\" di atas untuk mulai memeriksa.")
-    else:
-        today = date.today()
-        st.session_state.setdefault("cal_year", today.year)
-        st.session_state.setdefault("cal_month", today.month)
-        st.session_state.setdefault("cal_selected_date", None)
-
-        # Narrower, centered column + a scoped container (see
-        # ui/branding.py's CALENDAR_CONTAINER_KEY) so the calendar stays
-        # compact instead of stretching full-width.
-        _, cal_mid, _ = st.columns([1, 2, 1])
-        with cal_mid:
-            with st.container(key=branding.CALENDAR_CONTAINER_KEY):
-                nav1, nav2, nav3 = st.columns([1, 2, 1])
-                if nav1.button("←", key="cal_prev", use_container_width=True):
-                    y, m = calendar_service.add_months(st.session_state["cal_year"], st.session_state["cal_month"], -1)
-                    st.session_state["cal_year"], st.session_state["cal_month"] = y, m
-                    st.rerun()
-                nav2.markdown(
-                    f"<h6 style='text-align:center'>{calendar_service.MONTH_NAMES_ID[st.session_state['cal_month']]} "
-                    f"{st.session_state['cal_year']}</h6>",
-                    unsafe_allow_html=True,
-                )
-                if nav3.button("→", key="cal_next", use_container_width=True):
-                    y, m = calendar_service.add_months(st.session_state["cal_year"], st.session_state["cal_month"], 1)
-                    st.session_state["cal_year"], st.session_state["cal_month"] = y, m
-                    st.rerun()
-
-                grouped = calendar_service.group_by_deadline_date(hp_rows_all)
-                grid = calendar_service.build_month_grid(st.session_state["cal_year"], st.session_state["cal_month"])
-
-                header_cols = st.columns(7, gap="small")
-                for i, wd in enumerate(calendar_service.WEEKDAY_NAMES_ID):
-                    header_cols[i].markdown(f"<div style='text-align:center;font-size:0.72rem'><b>{wd}</b></div>", unsafe_allow_html=True)
-
-                for week in grid:
-                    week_cols = st.columns(7, gap="small")
-                    for i, day in enumerate(week):
-                        with week_cols[i]:
-                            if day is None:
-                                st.write("")
-                                continue
-                            day_key = day.isoformat()
-                            day_pkgs = grouped.get(day_key, [])
-                            label = f"{day.day}" + (" •" if day_pkgs else "")
-                            help_text = None
-                            if day_pkgs:
-                                names = "\n".join(f"- {p['nama_paket']}" for p in day_pkgs[:5])
-                                help_text = f"{len(day_pkgs)} paket jatuh tempo:\n{names}"
-                            if st.button(label, key=f"cal_day_{day_key}", help=help_text, use_container_width=True):
-                                st.session_state["cal_selected_date"] = day_key
-                                st.rerun()
-
-        selected = st.session_state.get("cal_selected_date")
-        if selected and selected in grouped:
-            st.markdown(f"**Paket dengan Akhir Pendaftaran {selected}:**")
-            for p in grouped[selected]:
-                with st.container(border=True):
-                    # Package name is the clickable link straight to the
-                    # LPSE page - no separate "Buka di LPSE" line needed.
-                    st.markdown(paket_link_markdown(p["nama_paket"], p["package_url"]))
-                    c1, c2, c3 = st.columns(3)
-                    c1.write(f"**Wilayah:** {p['region_identifier']}")
-                    c2.write(f"**Bagian:** {p['section']} / {p['kategori']}")
-                    c3.write(f"**HPS:** {p['hps_text'] or '-'}")
-        elif selected:
-            st.session_state["cal_selected_date"] = None
+    st.caption(
+        "\U0001F4C5 Kalender Akhir Pendaftaran kini ada di ikon kalender kecil di bagian atas halaman "
+        "(di atas tab) - klik ikonnya untuk melihat kalender, sama persis seperti sebelumnya."
+    )
 
     st.divider()
     st.subheader("Paket Relevan Tersimpan - Ringkasan Beranda")
@@ -711,7 +758,7 @@ with tab_beranda:
         )
 
 # ---------------------------------------------------------------------------
-# TAB 3: keyword ("Kata Kunci") management - Phase 5
+# TAB 3: keyword ("Kata Kunci") management
 # ---------------------------------------------------------------------------
 
 with tab_kata_kunci:
@@ -786,7 +833,7 @@ with tab_kata_kunci:
                 st.rerun()
 
 # ---------------------------------------------------------------------------
-# TAB 4: Excel export - Phase 6 (two datasets, exported separately)
+# TAB 4: Excel export (two datasets, exported separately)
 # ---------------------------------------------------------------------------
 
 
@@ -832,7 +879,7 @@ def render_excel_export_panel(dataset: str, rows_getter):
         pick_cols = st.columns(min(len(discovered), 4))
         for i, rel_path in enumerate(discovered[:4]):
             if pick_cols[i % len(pick_cols)].button(rel_path, key=f"{dataset}_pick_{i}", use_container_width=True):
-                st.session_state[file_key] = str(excel_service.PROJECT_ROOT / rel_path)
+                st.session_state[file_key] = str(excel_service.REPO_ROOT / rel_path)
                 st.rerun()
 
     file_path_input = st.text_input(

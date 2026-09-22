@@ -9,10 +9,11 @@ venv/
 .venv/
 
 # App data - the whole point is that this stays local and per-machine
-data/*.db
-data/*.db-journal
+# (lives in src/, one folder under the app's own code - see AGENTS.md)
+src/data/*.db
+src/data/*.db-journal
 backups/
-logs/*.log
+src/logs/*.log
 
 # Env / secrets
 .env

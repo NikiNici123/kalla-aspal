@@ -202,7 +202,8 @@ h3 {
 }
 
 /* ======================================================================
-   8. DEADLINE CALENDAR (Ringkasan Beranda tab only)
+   8. DEADLINE CALENDAR (inside the small calendar-icon popover, top of
+      every page - see app.py's render_deadline_calendar_popover())
    Scoped to `.st-key-kalla_calendar` - the CSS class Streamlit generates
    for the st.container(key="kalla_calendar") wrapping the calendar in
    app.py (see branding.CALENDAR_CONTAINER_KEY). If you ever rename that

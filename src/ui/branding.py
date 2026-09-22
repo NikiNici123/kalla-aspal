@@ -12,8 +12,8 @@ Three things get applied once, near the top of app.py:
     tabs, metrics, dividers, headers, and the card system used by both
     the Dashboard feed and the scrape-result package cards
     (`.kalla-activity-*` / `.kalla-pkg-*`), plus a narrow rule (see
-    CALENDAR_CONTAINER_KEY) that shrinks only the Ringkasan Beranda
-    calendar.
+    CALENDAR_CONTAINER_KEY) that shrinks the deadline calendar shown
+    inside its small popover icon at the top of the page.
   - `render_header()` -> a small banner in place of st.title(), using the
     real wordmark's colors.
   - `render_road_strip()` -> the gold dashed line under the header, meant
@@ -43,10 +43,11 @@ _STYLE_CSS_PATH = Path(__file__).parent / "style.css"
 
 PAGE_CONFIG_KWARGS = dict(page_title="Kalla Aspal - LPSE Monitor", page_icon="\U0001F6E3", layout="wide")
 
-# Key for st.container(key=...) around the deadline calendar, so the CSS
-# can shrink just that calendar's buttons/spacing without touching
-# buttons anywhere else. Streamlit turns this into a `st-key-{value}`
-# class on the container's wrapper element.
+# Key for st.container(key=...) around the deadline calendar (rendered
+# inside a small popover icon at the top of the page, visible from every
+# tab), so the CSS can shrink just that calendar's buttons/spacing
+# without touching buttons anywhere else. Streamlit turns this into a
+# `st-key-{value}` class on the container's wrapper element.
 CALENDAR_CONTAINER_KEY = "kalla_calendar"
 
 

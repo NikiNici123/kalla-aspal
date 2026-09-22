@@ -71,6 +71,12 @@ if "!NEED_NEW_WINDOW!"=="1" (
     exit /b 0
 )
 
+REM The app's own code (app.py, venv, requirements.txt, ...) lives in
+REM src\, one folder deeper than this launcher - everything below this
+REM point runs from there, so the app only has to be launched from a
+REM single double-click at the top level.
+cd /d "%~dp0src"
+
 if not exist venv (
     echo Menyiapkan aplikasi untuk pertama kali, mohon tunggu ^(1-3 menit^)...
     python -m venv venv

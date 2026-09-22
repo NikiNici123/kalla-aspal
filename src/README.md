@@ -59,15 +59,23 @@ expected to be fixable, not a dead end.
    checks the full tender list (every status) for all active regions.
 3. Go to **Ringkasan Beranda** and click **CEK RINGKASAN BERANDA** - this
    checks each region's homepage summary, which additionally carries a
-   registration deadline ("Akhir Pendaftaran"), shown on a built-in
-   calendar further down the tab (hover a marked day for a quick list,
-   click a day for full detail - each package name shown is itself a
-   clickable link straight to its LPSE page).
+   registration deadline ("Akhir Pendaftaran"). That deadline shows up on
+   a built-in month calendar behind the small 📅 icon at the top of
+   the page (visible from every tab, not just this one) - hover a marked
+   day for a quick list, click a day for full detail, click the icon
+   again to close it. Each package name shown is itself a clickable link
+   straight to its LPSE page.
 4. Either check will tell you **X PAKET BARU DITEMUKAN** (or "tidak ada
-   paket baru") and list what's new/changed. Both keep a running,
-   earliest-first table of everything relevant found so far - use the
-   filter/sort controls above each table to narrow it down (e.g. only
-   "Masa Sanggah") and see the HPS total recalculate for just that filter.
+   paket baru"). Next to that banner, a small 🔔 **Status per
+   Wilayah** icon holds the per-region "N found / N relevant" detail (and
+   any errors) out of the way, and an **Urutkan** dropdown next to it lets
+   you sort the new/updated package cards themselves (e.g. by HPS) right
+   after a check - no need to scroll down to the saved-package table
+   below just to reorder what you're currently looking at. Both checks
+   also keep a running, earliest-first table of everything relevant found
+   so far further down the tab - use the filter/sort controls above that
+   table to narrow it down (e.g. only "Masa Sanggah") and see the HPS
+   total recalculate for just that filter.
 5. Go to **Dashboard** (the first tab) any time to see **Aktivitas
    Terbaru** - a clean, card-based feed of every new/changed package
    across BOTH datasets, newest first, including a warning badge when a
@@ -232,8 +240,9 @@ anonymous HTTP GET + HTML parsing (no session needed at all).
   data (as plain values) but skips turning it into a formatted Table for
   that run - use "Buat File Baru" for a file that's guaranteed to qualify.
 - **In-project Excel file auto-discovery only looks inside this project's
-  own folder** (not your whole computer) - drop your workbook in here (or
-  a subfolder) and it'll show up as a one-click button in the Excel tab.
+  own top-level folder** (not your whole computer, and not inside `src/`)
+  - drop your workbook next to `run_app.bat` (or a subfolder you make
+  there) and it'll show up as a one-click button in the Excel tab.
 - **`LPSE_Monitor.exe` (via `build_exe.bat`) is unverified** - it was
   written following the standard way to package a Streamlit app with
   PyInstaller, but has not been built/tested on a real Windows machine.
@@ -248,44 +257,57 @@ anonymous HTTP GET + HTML parsing (no session needed at all).
 
 ## Project structure
 
+Since 22 September 2026, the repo root only holds the things you touch
+directly by hand - `run_app.bat`, `push_to_github.bat`, your `.xlsx`
+workbook, and `.gitignore`. Everything else (all the app's own code) lives
+one folder deeper, inside `src/`, to keep the top-level folder from
+getting cluttered. You never need to open `src/` yourself day to day -
+`run_app.bat` finds everything inside it automatically.
+
 ```
 kalla-aspal/
-    app.py                          Streamlit UI (6 tabs)
-    launcher.py                     Entry point used only by the .exe build
-    lpse_monitor.spec               PyInstaller build spec
-    requirements.txt
-    PROJECT_STATUS.md                Detailed status log - read this first
     run_app.bat                       One-click launcher (no CMD typing)
-    build_exe.bat                     Builds LPSE_Monitor.exe (unverified - see limitations)
     push_to_github.bat                One-click add+commit+push
-    setup_reminders.bat                One-click: registers the Windows deadline-notification schedule
-    check_reminders.py                Fires the actual Windows notification - run by Task Scheduler, not by hand
-    .streamlit/config.toml            Base color theme (Kalla Aspal green/gold)
-    data/                             SQLite database lives here (gitignored)
-    backups/                           Auto-created Excel backups (gitignored)
-    scraper/
-        lpse_scraper.py               Full /lelang list - session + JSON API
-        lpse_homepage_scraper.py      Homepage summary - plain HTML, no session
-    database/
-        models.py                     SQL schema (10 tables)
-        database.py                   Connection + queries + schema migrations
-    services/
-        keyword_service.py            Keyword matching (shared by both scrapers)
-        comparison_service.py         New/existing/updated - /lelang dataset
-        homepage_service.py           New/existing/updated - homepage dataset
-        filter_service.py             Dashboard filter/sort/HPS-sum helpers
-        calendar_service.py           Akhir Pendaftaran calendar helpers
-        excel_service.py              Excel export (Phase 6) - two datasets, Excel Tables, file discovery
-        status_flags.py               Detects "gagal"/"batal"/"diulang"/etc. inside a package's name
-        activity_service.py           Merges both datasets' change history for the Dashboard tab
-        reminder_service.py           Deadline-window date logic behind check_reminders.py
-    ui/
-        branding.py                    Header banner + road-strip HTML, reads style.css for all CSS
-        style.css                      All colors/CSS in one plain file - edit this to change the look
-    config/
-        default_keywords.py           Seed keyword list (first run only)
-        reminder_times.txt            Editable list of daily reminder check times (HH:MM, one per line)
-    tests/                            93 offline unit tests (see below)
+    Kalla_Aspal Scraper.xlsx          Your Excel workbook (example name - yours may differ)
+    .gitignore
+    src/
+        app.py                          Streamlit UI (6 tabs)
+        launcher.py                     Entry point used only by the .exe build
+        lpse_monitor.spec               PyInstaller build spec
+        requirements.txt
+        PROJECT_STATUS.md                Detailed status log - read this first
+        README.md                        This file
+        PRD.md / TRD.md / AGENTS.md      Product/technical requirements + AI working conventions
+        build_exe.bat                     Builds LPSE_Monitor.exe (unverified - see limitations)
+        setup_reminders.bat                One-click: registers the Windows deadline-notification schedule
+        check_reminders.py                Fires the actual Windows notification - run by Task Scheduler, not by hand
+        .streamlit/config.toml            Base color theme (Kalla Aspal green/gold)
+        data/                             SQLite database lives here (gitignored)
+        backups/                           Auto-created Excel backups (gitignored)
+        scraper/
+            lpse_scraper.py               Full /lelang list - session + JSON API
+            lpse_homepage_scraper.py      Homepage summary - plain HTML, no session
+        database/
+            models.py                     SQL schema (10 tables)
+            database.py                   Connection + queries + schema migrations
+        services/
+            keyword_service.py            Keyword matching (shared by both scrapers)
+            comparison_service.py         New/existing/updated - /lelang dataset
+            homepage_service.py           New/existing/updated - homepage dataset
+            filter_service.py             Dashboard filter/sort/HPS-sum helpers
+            calendar_service.py           Akhir Pendaftaran calendar helpers
+            excel_service.py              Excel export - two datasets, Excel Tables, file discovery
+            status_flags.py               Detects "gagal"/"batal"/"diulang"/etc. inside a package's name
+            activity_service.py           Merges both datasets' change history for the Dashboard tab
+            reminder_service.py           Deadline-window date logic behind check_reminders.py
+            region_import_service.py      Bulk-import regions from pasted text or a bookmarks file
+        ui/
+            branding.py                    Header banner + road-strip HTML, reads style.css for all CSS
+            style.css                      All colors/CSS in one plain file - edit this to change the look
+        config/
+            default_keywords.py           Seed keyword list (first run only)
+            reminder_times.txt            Editable list of daily reminder check times (HH:MM, one per line)
+        tests/                            93 offline unit tests (see below)
 ```
 
 ## Running the tests

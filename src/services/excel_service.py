@@ -63,6 +63,14 @@ from database import database as db
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKUPS_DIR = PROJECT_ROOT / "backups"
 
+# The app's code (this file included) lives one folder deeper than the
+# repo root (in `src/`) - PROJECT_ROOT above IS that `src/` folder. But
+# the user's own .xlsx workbook is deliberately kept OUTSIDE `src/`, at
+# the true repo root, alongside run_app.bat - so file discovery below
+# needs to look one level higher than PROJECT_ROOT, not at PROJECT_ROOT
+# itself, or it would never find a workbook sitting next to run_app.bat.
+REPO_ROOT = PROJECT_ROOT.parent
+
 DATASET_LELANG = "lelang"
 DATASET_BERANDA = "beranda"
 
@@ -168,21 +176,27 @@ def backup_file(file_path: Path) -> Path:
     return backup_path
 
 
-def discover_excel_files(base_dir: Path = PROJECT_ROOT) -> list:
+def discover_excel_files(base_dir: Path = REPO_ROOT) -> list:
     """Find .xlsx files already sitting inside the project folder, so
     someone who just drops their workbook in there doesn't have to look
     up and type/paste a full path. Scoped to only this project folder -
     scanning the whole computer would be slow and would mean guessing at
     files the app has no business touching.
 
+    Defaults to REPO_ROOT (the true top-level folder, one level above
+    `src/`), not PROJECT_ROOT, specifically so a workbook kept next to
+    run_app.bat - the normal place for it - is still found even though
+    the app's own code lives a folder deeper.
+
     Skips: the `backups/` folder (our own timestamped copies, not a
-    workbook to export into), `venv/`, `.git/`, and Excel's own temporary
-    lock files (start with "~$", created while a workbook is open).
-    Returns paths sorted by most-recently-modified first, as plain
-    strings (relative to base_dir when possible) - a good default guess
-    is "whichever workbook was touched most recently".
+    workbook to export into), `venv/`, `.git/`, `src/` (the app's own
+    code - no workbook ever lives there), and Excel's own temporary lock
+    files (start with "~$", created while a workbook is open). Returns
+    paths sorted by most-recently-modified first, as plain strings
+    (relative to base_dir when possible) - a good default guess is
+    "whichever workbook was touched most recently".
     """
-    skip_dirs = {"backups", "venv", ".venv", ".git", "__pycache__", "node_modules", "data"}
+    skip_dirs = {"backups", "venv", ".venv", ".git", "__pycache__", "node_modules", "data", "src"}
     found = []
     for path in base_dir.rglob("*.xlsx"):
         if path.name.startswith("~$"):

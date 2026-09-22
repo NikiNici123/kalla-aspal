@@ -16,7 +16,7 @@ from __future__ import annotations
 import calendar as _calendar
 from collections import defaultdict
 from datetime import date
-from typing import Iterable, Optional
+from typing import Iterable
 
 
 def _get(row, key, default=None):

@@ -5,7 +5,7 @@
 Claude sessions. Update it (append, don't overwrite) whenever something
 changes — see "How to keep this file updated" at the bottom.*
 
-Last updated: **14 September 2026 (latest) — code comments cleaned up across the project**
+Last updated: **22 September 2026 (even later) — root folder reorganized into `src/`**
 
 ---
 
@@ -79,7 +79,7 @@ flowchart TB
 |---|---|---|---|
 | 1 | Basic scraper, keyword filter, region input | ✅ Done | Real API reverse-engineered, not guessed |
 | 2 | SQLite storage, new/existing/updated detection | ✅ Done | Full `package_snapshots` change history |
-| 3 | Dashboard | ✅ Done | Metrics row + per-tab filter/sort/HPS-sum + deadline calendar, PLUS a dedicated first "Dashboard" tab (`services/activity_service.py`) showing a Notion-style "Aktivitas Terbaru" feed merged from both datasets — added 2026-09-13 night |
+| 3 | Dashboard | ✅ Done | Metrics row + per-tab filter/sort/HPS-sum + deadline calendar, PLUS a dedicated first "Dashboard" tab (`services/activity_service.py`) showing a Notion-style "Aktivitas Terbaru" feed merged from both datasets — added 2026-09-13 night. Since then: the calendar moved out of the Ringkasan Beranda tab into a small 📅 popover icon at the top of the page (visible from every tab), the per-region status detail lives behind a small 🔔 "Status per Wilayah" popover, and an "Urutkan" sort dropdown next to it sorts the just-checked Paket Baru/Diperbarui cards by HPS or name — see 2026-09-22 entry in §5 |
 | 4 | Region management (add/edit/delete/activate) | ✅ Done | "Wilayah LPSE" tab; add+activate+delete built, no edit-in-place yet |
 | — | Homepage summary scrape + Akhir Pendaftaran | ✅ Done | Added 2026-09-13, not in the original phase list — see §5 |
 | 5 | Keyword management (add/edit/delete/enable) | ✅ Done | "Kata Kunci" tab - add/rename/enable/disable/delete, all live |
@@ -98,8 +98,17 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 - Ordering (earliest package first, latest last) is based on Package ID
   as a proxy for creation time, not a confirmed timestamp field — see §5,
   decision `2026-09-13-c`.
-- No scheduling/notifications yet — both check buttons are still run
-  manually, twice a day, as planned for v1.
+- Checking for new tenders is still fully manual - both check buttons
+  (and "Cek Semua Sekaligus") are clicked by hand, twice a day, as
+  planned for v1. **Deadline reminders themselves are no longer
+  manual-only**, though: `check_reminders.py` + Windows Task Scheduler
+  (registered via `setup_reminders.bat`) fires a native Windows toast at
+  up to 3 editable times a day (`config/reminder_times.txt`) for
+  upcoming Akhir Pendaftaran deadlines, with same-day acknowledge-to-
+  skip-later-reminders logic (`services/reminder_service.py`). This is
+  separate from re-scraping - the reminder only warns about deadlines on
+  packages already saved from the last manual check, it doesn't check
+  LPSE itself.
 - The homepage scraper's assumption that a category's badge count always
   equals its row count (i.e. nothing is truncated) is only verified
   against categories with a handful of packages so far.
@@ -148,6 +157,158 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 
 Newest first. Each entry: what changed, why, and any decision worth
 remembering.
+
+### 2026-09-22 (even later) — Root folder reorganized into `src/`
+
+The repo root was getting cluttered (Nikol's own words, with a File
+Explorer screenshot to show it) - `app.py`, every code folder, the docs,
+the venv, logs, and her Excel workbook were all sitting loose at the top
+level together. Moved everything except `run_app.bat`,
+`push_to_github.bat`, her `.xlsx` workbook, and `.gitignore` into a new
+`src/` folder, after confirming scope and the folder name with her
+directly (full move, not docs-only; "src" over alternatives like "app" or
+"code").
+
+- Traced the full path-dependency graph before touching anything. Nearly
+  everything inside the app resolves its own paths relative to itself
+  (`Path(__file__).resolve().parent...` in Python, `%~dp0` in the `.bat`
+  files), so moving the whole tree down one level as a unit needed **zero
+  code changes** for the large majority of files (`database/`, `scraper/`,
+  `services/`, `ui/`, `config/`, `launcher.py`, `lpse_monitor.spec`,
+  `build_exe.bat`, `setup_reminders.bat`, `check_reminders.py`,
+  `push_to_github.bat` itself stays at root and was untouched).
+- Two files genuinely needed edits, because they reach *across* the new
+  `src/` boundary rather than staying inside it:
+  - `run_app.bat` (stays at root) now `cd`s into `src\` right after its
+    Python/Git auto-installer step (which correctly stays scoped to root,
+    since that's where installer `.exe` files get placed) and before
+    creating/activating the venv or running Streamlit.
+  - `services/excel_service.py` gained a second path constant, `REPO_ROOT`
+    (= `PROJECT_ROOT.parent`), and `discover_excel_files()` now defaults
+    to scanning `REPO_ROOT` instead of `PROJECT_ROOT` - otherwise the
+    Excel tab's one-click file-discovery buttons would stop finding
+    Nikol's workbook once it stayed at the true root while the app's code
+    moved a folder deeper. `app.py`'s own use of this path
+    (`excel_service.PROJECT_ROOT / rel_path` → `excel_service.REPO_ROOT /
+    rel_path`) was updated to match.
+  - `.gitignore` (stays at root): the three patterns that reference a path
+    one level in (`data/*.db`, `data/*.db-journal`, `logs/*.log`) got a
+    `src/` prefix, since a mid-string slash in a `.gitignore` pattern
+    anchors it to that exact depth rather than matching everywhere.
+    `venv/` and `backups/` didn't need changes (trailing-slash-only
+    patterns already match at any depth).
+- `AGENTS.md` and `README.md` had their file-structure references updated
+  to show the new two-tier layout; `TRD.md` Section 29 rewritten with the
+  full new tree and the reasoning above, plus a note in Section 19 on the
+  `PROJECT_ROOT` vs `REPO_ROOT` split.
+- Left alone on purpose: the **old root-level `venv/`** is now orphaned
+  (a Windows venv bakes in absolute paths and can't be safely relocated by
+  copying - it has to be deleted and a fresh one created inside `src/` on
+  first run there instead). Nikol needs to delete it by hand; not done
+  automatically. `setup_reminders.bat`'s already-registered Windows Task
+  Scheduler entries point at the old `check_reminders.py` path and need
+  one re-run of `setup_reminders.bat` from its new `src/` location to
+  re-point them (the script replaces its own old schedule rather than
+  piling up duplicates, per its own docstring, so this is safe to do any
+  time).
+- Verified offline: `python3 -m py_compile` on `app.py` and
+  `services/excel_service.py` (the only two files with actual code
+  changes). No `pytest` run - not available in this sandbox, and neither
+  change touches tested logic (a path-constant addition and one call-site
+  swap).
+
+### 2026-09-22 (latest) — Top-icon UI redesign, PRD/TRD/AGENTS.md, project-wide doc cleanup
+
+Three related pieces of work in one session.
+
+- **(a) Calendar and status detail moved to small top-of-page icons.**
+  The "Kalender Akhir Pendaftaran" block used to sit inline near the
+  bottom of the Ringkasan Beranda tab; it's now behind a small 📅
+  popover icon at the top of the page (right side, above the metrics
+  row), visible from every tab, not just one - same behavior as before
+  (month nav, day grid with markers, click a day for detail), just
+  relocated. `render_deadline_calendar_popover()` in `app.py` replaced
+  the old inline block; `hp_rows_all` is now fetched once at the top
+  level and reused both by the popover and by the Ringkasan Beranda
+  saved-package table further down, instead of querying it twice.
+- **(b) HPS sort added next to the "Status per Wilayah" bell.**
+  `render_result_banner()` now renders a small "Urutkan" dropdown
+  (reusing `filter_service.SORT_OPTIONS`/`sort_rows()`) beside the bell
+  popover, and returns the sorted new/updated lists directly - both
+  `tab_lelang` and `tab_beranda` use this to sort the just-checked Paket
+  Baru/Diperbarui cards, not just the saved-package tables further down.
+- **(c) `PRD.md` and `TRD.md` created.** `PRD.md` is Nikol's own written
+  product requirements, saved as-is. `TRD.md` started from a similar
+  draft but described an idealized architecture (nested `ui/pages/` +
+  `ui/components/`, a `database/repository.py`, a `notifications` table,
+  a separate `CHANGELOG.md`, Playwright/pandas in use) that didn't match
+  what's actually built - it was rewritten section by section against
+  the real file tree, the real `database/models.py` schema, and the
+  real `requirements.txt` before being saved, with a short "what changed
+  and why" note at the top rather than silently diverging from the
+  draft. `AGENTS.md` was added alongside it - working conventions for
+  whichever AI session picks this project up next (don't restructure
+  toward the idealized layout, keep the two datasets separate, never
+  push git on Nikol's behalf, the verify → send → commit delivery
+  workflow, etc). All three live in the repo root and in the project's
+  claude.ai docs.
+- **(d) Cleanup pass using (c) as the reference.** Went through
+  `app.py`, `database/`, `scraper/`, `services/`, `ui/`, `README.md`,
+  and this file looking for drift between what's documented and what's
+  real. Fixed: two leftover "- Phase 5"/"- Phase 6" labels in `app.py`
+  section-header comments (the 2026-09-14 cleanup missed these two), one
+  genuinely unused `Optional` import in `services/calendar_service.py`,
+  stale "Ringkasan Beranda tab only" comments in `ui/branding.py` and
+  `ui/style.css` left over from before (a) above, `README.md`'s calendar
+  description (still said "further down the tab"), a missing
+  `region_import_service.py` line in `README.md`'s file-structure tree,
+  and this file's own §3/§4 entries that hadn't caught up with the
+  deadline-reminder feature (§5's 2026-09-17 entry, below) or today's
+  changes. Also found, but deliberately did NOT touch: several scraped
+  `packages` fields (`metode_kualifikasi`, `metode_evaluasi`, `instansi`,
+  `nama_paket_raw`, `tahun_anggaran`, `evaluasi_ulang`, `penawaran_ulang`,
+  `konsolidasi`, `oap_only`) that are stored but never displayed
+  anywhere - flagged as §7 item 6 instead of silently dropping the
+  columns, since that's a schema change against Nikol's real database,
+  not a docs/comment fix.
+- Verified offline: `python3 -m py_compile` on every touched `.py` file.
+  No `pytest` run - not available in this sandbox (no PyPI network
+  access), and none of today's `.py` changes touch tested logic (a
+  removed unused import, comment-only edits, and the already-verified
+  calendar/sort UI change from the prior session).
+
+### 2026-09-17 — Deadline reminders (Windows toast, 3 editable check times, acknowledge-to-skip)
+
+Windows toast notifications for upcoming Akhir Pendaftaran deadlines,
+requested as an alternative to email/cloud-account-based reminders so no
+sensitive info (email addresses, accounts) needs to be involved - stays
+fully local, same as everything else in this app.
+
+- `config/reminder_times.txt` - editable list of daily check times
+  (default 08:00 / 13:00 / 16:00), one `HH:MM` per line.
+- `services/reminder_service.py` - pure date logic, no Windows
+  dependency: which already-saved Ringkasan Beranda packages have an
+  Akhir Pendaftaran inside the warning window, plus the "already
+  acknowledged today" tracking (a single ISO date written to a small ack
+  file) - so if an earlier check today was clicked/dismissed, a later
+  scheduled check the same day stays quiet instead of nagging again.
+  Resets on its own the next calendar day.
+- `check_reminders.py` - the actual firing side: reads the config +
+  service above, calls `win11toast` to show the notification. Windows-
+  only (`requirements.txt` marks `win11toast` with a
+  `sys_platform == "win32"` marker so it's skipped everywhere else).
+- `setup_reminders.bat` - registers (or re-registers) one Windows Task
+  Scheduler entry per configured time via `schtasks`. Deleting old
+  entries before re-registering had to enumerate tasks by name and match
+  individually - `schtasks /delete /tn "prefix*"` does NOT support
+  wildcard prefix matching (confirmed against Microsoft's own docs),
+  only an exact name or the literal `*` for every task on the machine.
+- This is separate from re-scraping (see §7 item 5) - the reminder only
+  warns about deadlines on packages already saved from the last manual
+  check, it doesn't scrape LPSE itself.
+- Verified offline: `tests/test_reminder_service.py` (pure date logic,
+  no Windows dependency, runs the same as every other service test) +
+  `python3 -m py_compile` on all new/changed files.
 
 ### 2026-09-14 (latest) — Code comments cleaned up (less "AI-generated" reading)
 
@@ -661,8 +822,22 @@ Not yet decided — Nikol's call:
    detail/change-history page (the data already exists in
    `package_snapshots` / `scrape_runs` / `homepage_scrape_runs`, just no
    UI yet).
-5. **Scheduling/notifications** — still fully manual (open the app,
+5. **Automatic re-scraping** — still fully manual (open the app,
    click the check buttons); not started.
+6. **Several scraped `packages` fields are stored but never shown anywhere**
+   (found during the 2026-09-22 cleanup pass, see §5): `metode_kualifikasi`,
+   `metode_evaluasi`, `instansi`, `nama_paket_raw`, `tahun_anggaran`,
+   `evaluasi_ulang`, `penawaran_ulang`, `konsolidasi`, `oap_only`. They're
+   scraped, saved on every check, and re-saved on every update, but not
+   read anywhere in `app.py`, a service, or the Excel export - unlike
+   `jenis_pengadaan`, which *is* actively shown/filtered/exported and is
+   NOT part of this list. The PRD explicitly says Procurement Method
+   shouldn't be part of the core data requirement, which `metode_kualifikasi`/
+   `metode_evaluasi` sit close to - worth a decision: display them
+   somewhere (package detail page, once §7.4 exists), or stop scraping/
+   storing them. Left untouched for now since dropping DB columns needs a
+   migration on Nikol's existing `lpse_monitor.db` and isn't the kind of
+   change to make without asking first.
 
 ## How to keep this file updated
 
