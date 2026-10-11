@@ -39,6 +39,19 @@ ACK_WAIT_SECONDS of the notification appearing. If it behaves
 differently on your machine, tell me what you see in
 logs\\reminder.log and we'll adjust the matching logic.
 
+SAFE-FAILURE DESIGN: the dangerous failure mode for a deadline reminder
+isn't "it notified me when it didn't need to" - it's "it silently
+stopped working and nobody noticed". Everything here is built around
+that: main() wraps its whole body in a catch-all (see _run() below) so
+an unexpected error always leaves a line in logs\\reminder.log instead
+of vanishing into a headless Task Scheduler run nobody sees; a missing
+package name degrades to a placeholder instead of crashing the whole
+check (_safe_name()); and an unclear click result is treated as "not
+acknowledged", which just costs one extra reminder later today rather
+than one that should have fired but didn't. This script also only ever
+READS the database and only ever WRITES to its own log/ack files - it
+never touches lpse_monitor.db, Excel, or anything scraped.
+
 To test by hand instead of waiting for the schedule:
     venv\\Scripts\\python check_reminders.py
 """
@@ -124,7 +137,32 @@ def _was_acknowledged(result) -> bool:
     return bool(arguments.strip())
 
 
+def _safe_name(row) -> str:
+    """row["nama_paket"] directly would raise if that column were ever
+    missing or None on one particular row - and one malformed row
+    shouldn't be able to take down the whole scheduled check. Mirrors
+    the same defensive-read spirit as reminder_service._get()."""
+    try:
+        name = row["nama_paket"]
+    except (KeyError, IndexError):
+        name = None
+    return name or "(paket tanpa nama)"
+
+
 def main() -> None:
+    """Thin wrapper: the real work is in _run(). Nothing _run() can raise
+    should ever escape this function - see the module docstring's
+    "SAFE-FAILURE DESIGN" note. A scheduled Task Scheduler run has no
+    window and no one watching it live, so an uncaught exception here
+    wouldn't show an error to anyone - it would just look, forever,
+    like a deadline that quietly stopped being checked."""
+    try:
+        _run()
+    except Exception as exc:
+        _log(f"GAGAL TAK TERDUGA (lihat baris ini kalau reminder tampak berhenti bekerja): {exc!r}")
+
+
+def _run() -> None:
     if reminder_service.is_acknowledged_today(ACK_FILE):
         _log("Sudah dikonfirmasi hari ini - jadwal ini dilewati.")
         return
@@ -141,7 +179,7 @@ def main() -> None:
         _log("Tidak ada deadline dalam window - tidak ada notifikasi.")
         return
 
-    names = [row["nama_paket"] for _, row in upcoming]
+    names = [_safe_name(row) for _, row in upcoming]
     _log(f"{len(names)} paket dalam window: " + " | ".join(names))
 
     try:

@@ -5,7 +5,7 @@
 Claude sessions. Update it (append, don't overwrite) whenever something
 changes — see "How to keep this file updated" at the bottom.*
 
-Last updated: **22 September 2026 (even later) — root folder reorganized into `src/`**
+Last updated: **11 October 2026 — `check_reminders.py` hardened; presentation deck updated**
 
 ---
 
@@ -157,6 +157,44 @@ Legend: ✅ done · 🟡 partially done · ⬜ not started.
 
 Newest first. Each entry: what changed, why, and any decision worth
 remembering.
+
+### 2026-10-11 — `check_reminders.py` hardened; presentation deck updated with real reminder feature
+
+Nikol asked to make the deadline-reminder script "as safe as possible"
+while prepping the QCC presentation. `reminder_service.py` and
+`setup_reminders.bat` were already judged solid on inspection (the
+former already has its own defensive `ValueError`/`FileNotFoundError`
+handling; the latter is already idempotent with scoped, name-prefix
+Task Scheduler cleanup) - no changes needed there. `check_reminders.py`
+got three additions, all consistent with its already-documented
+"SAFE-FAILURE DESIGN" philosophy (the dangerous failure mode for a
+reminder is silently stopping, not over-notifying):
+
+- `main()` now wraps `_run()`'s entire body in a catch-all that logs
+  any unexpected exception to `logs/reminder.log` instead of letting it
+  escape - a headless Task Scheduler run has no window and no one
+  watching, so an uncaught error there previously would have looked,
+  forever, like a deadline that quietly stopped being checked.
+- New `_safe_name()` helper reads `row["nama_paket"]` defensively
+  (falls back to `"(paket tanpa nama)"` instead of raising) so one
+  malformed row can't take down the whole scheduled check.
+- Both additions verified offline: `python3 -m py_compile
+  check_reminders.py` passed, plus a manual sandbox test (stubbed
+  `database` module + the real `reminder_service.py`) confirming
+  `_safe_name()` handles a missing key without raising and that a
+  simulated `RuntimeError` inside `_run()` gets caught and logged by
+  `main()` rather than propagating. No `pytest` - not available in
+  this sandbox, same as always.
+- Also updated slide 8 and slide 11 of the QCC presentation deck
+  (`Presentasi QCC - Otomatisasi Monitoring Tender LPSE.pptx`, not in
+  this repo) to describe the real reminder feature ("Reminder 3x/hari
+  via notifikasi Windows") instead of leftover placeholder text.
+- **Flagged to Nikol, not yet confirmed fixed**: per the
+  2026-09-22 `src/` reorg entry below, her already-registered Windows
+  Task Scheduler entries still point at the pre-reorg
+  `check_reminders.py` path. The code itself is correct and hardened,
+  but the schedule won't actually run it until she re-runs
+  `setup_reminders.bat` from its current `src/` location.
 
 ### 2026-09-22 (even later) — Root folder reorganized into `src/`
 
